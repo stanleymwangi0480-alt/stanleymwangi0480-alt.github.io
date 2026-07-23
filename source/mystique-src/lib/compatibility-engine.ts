@@ -20,6 +20,15 @@
  */
  
 import { calculatePsyche, calculateDestiny, generateLoShuData } from "@/lib/numerology";
+import {
+  JOHARI_PSYCHIC_PROFILES,
+  getJohariPairCompatibility,
+  johariViewOf,
+  generateCombinedWeather,
+  type JohariPsychicProfile,
+  type JohariPairCompat,
+  type CombinedWeatherReport,
+} from "@/lib/johari-compatibility-data";
 import { getLifePathNumber } from "@/lib/numerology/karmic-life-path";
 import { computeRawPersonalYear, computeRawPersonalYearClassic, reduceNum, reduceToSingleDigit } from "@/lib/numerology/personal-year-full";
 import { lookupCompound } from "@/lib/numerology/chaldean-pyn-compounds";
@@ -89,6 +98,27 @@ export interface SoulResonanceReport {
    * harmonize with the other's. Optional so existing consumers that were
    * built before this field existed keep compiling and rendering unchanged. */
   pyInteraction?: PYInteractionAnalysis;
+  /**
+   * Rich Johari compatibility data: full psychic profiles for both souls
+   * and all four directional pair readings (psychic↔psychic,
+   * destiny↔destiny, psychic-A↔destiny-B, psychic-B↔destiny-A), plus the
+   * friend/enemy view each number holds of the other.
+   */
+  johariCompatibility?: {
+    profileA: JohariPsychicProfile;
+    profileB: JohariPsychicProfile;
+    psychicPair: JohariPairCompat | null;
+    destinyPair: JohariPairCompat | null;
+    crossPairAB: JohariPairCompat | null;  // A's psychic ↔ B's destiny
+    crossPairBA: JohariPairCompat | null;  // B's psychic ↔ A's destiny
+    aViewOfB: "Friendly" | "Neutral" | "Enemy";
+    bViewOfA: "Friendly" | "Neutral" | "Enemy";
+  };
+  /**
+   * Soul Weather combined personal-year analysis. Populated from the
+   * real personal-year numbers so callers don't have to recompute them.
+   */
+  combinedWeather?: CombinedWeatherReport;
 }
 
 // ---------------------------------------------------------------------
@@ -468,6 +498,28 @@ export function generateSoulResonance(a: SoulVitals, b: SoulVitals, targetYear =
   const loShu = analyzeLoShuOverlay(a, b);
   const psychoCompare = comparePsychomatrixLines(a, b);
   const pyInteraction = analyzePYInteraction(a, b, targetYear);
+
+  // ── Johari rich compatibility (new) ────────────────────────────────
+  const johariCompat = (() => {
+    const profileA = JOHARI_PSYCHIC_PROFILES[reduceSingle(a.psychic)];
+    const profileB = JOHARI_PSYCHIC_PROFILES[reduceSingle(b.psychic)];
+    if (!profileA || !profileB) return undefined;
+    return {
+      profileA,
+      profileB,
+      psychicPair: getJohariPairCompatibility(a.psychic, b.psychic),
+      destinyPair: getJohariPairCompatibility(a.destiny, b.destiny),
+      crossPairAB: getJohariPairCompatibility(a.psychic, b.destiny),
+      crossPairBA: getJohariPairCompatibility(b.psychic, a.destiny),
+      aViewOfB: johariViewOf(reduceSingle(a.psychic), reduceSingle(b.psychic)),
+      bViewOfA: johariViewOf(reduceSingle(b.psychic), reduceSingle(a.psychic)),
+    };
+  })();
+
+  // ── Combined Soul Weather (new) ─────────────────────────────────────
+  const aPY = reduceNum(computeRawPersonalYear(a.day, a.month, targetYear));
+  const bPY = reduceNum(computeRawPersonalYear(b.day, b.month, targetYear));
+  const combinedWeather = generateCombinedWeather(aPY, bPY);
  
   const romanceScore = Math.round(
     psychicHarmony.score * 0.30 + loShu.voidFill.score * 0.25 + chinese.score * 0.20 + johari.score * 0.15 + psychicHarmony.score * 0.10,
@@ -517,6 +569,8 @@ export function generateSoulResonance(a: SoulVitals, b: SoulVitals, targetYear =
     famousTwins: [],
     reading: parts.join(" "),
     pyInteraction,
+    johariCompatibility: johariCompat,
+    combinedWeather,
   };
 }
  
