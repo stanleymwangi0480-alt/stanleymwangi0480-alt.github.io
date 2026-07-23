@@ -1,0 +1,52 @@
+name: Deploy Mystique Compass
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Mystique
+        run: pnpm --filter @workspace/mystique run build
+        env:
+          PORT: 3000
+          BASE_PATH: /
+          VITE_ANALYTICS_ENDPOINT: https://mystique-analytics.sksalemking.workers.dev
+          VITE_AI_ADVISORY_ENDPOINT: https://mystique-ai-advisory.sksalemking.workers.dev
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: artifacts/mystique/dist/public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
