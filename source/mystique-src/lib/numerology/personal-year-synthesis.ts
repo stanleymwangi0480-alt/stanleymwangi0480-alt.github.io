@@ -30,6 +30,20 @@ export interface PersonalYearDualEssenceSynthesis {
   domains: string[];
   polarity: 'predominantly constructive' | 'predominantly cautionary' | 'mixed ordeal-and-reward' | 'threshold / transition';
   intensityScore: number;
+  /** New: explicit prose explaining how the Direct ("Surface Journey") and Classic
+   * ("Destiny Blueprint") essences combine into one coherent reading for the year.
+   * Additive field — existing consumers that don't read it are unaffected. */
+  complementaryBridge: string;
+  /** New: 0–100. How strongly the Direct and Classic domain/trait vectors agree.
+   * High = the two essences are largely telling the same story ("what you see is what
+   * you get"). Low = the two essences diverge, so the reading depends on holding both
+   * the surface event and the deeper meaning at once. */
+  agreementIndex: number;
+  /** New: 0–100. How much the top historical analogue stands out from the rest of the
+   * cluster. High = one historical pattern dominates the calibration; low = several
+   * competing analogues are roughly equally likely, so the forecast should be read as
+   * more provisional. */
+  historicalConfidence: number;
 }
  
 interface BuildArgs {
@@ -363,7 +377,6 @@ const EXPANDED_HISTORICAL_CASES: HistoricalCase[] = [
 ];
  
 const HISTORICAL_CASE_LIBRARY: HistoricalCase[] = [...HISTORICAL_CASES, ...EXPANDED_HISTORICAL_CASES, ...HISTORICAL_CASES_EXPANSION_200, ...HISTORICAL_CASES_EXPANSION_300_EXTRA, ...HISTORICAL_CASES_EXPANSION_300_MORE, ...HISTORICAL_CASES_EXPANSION_FINAL];
- 
 function intelligenceFor(compound: ChaldeanPYNCompound | null, reduced: number, raw: number): CompoundIntelligence {
   const base = REDUCED_INTELLIGENCE[reduced] || REDUCED_INTELLIGENCE[((reduced % 9) || 9)];
   const over = COMPOUND_INTELLIGENCE[compound?.compound ?? raw] || {};
@@ -378,10 +391,10 @@ function intelligenceFor(compound: ChaldeanPYNCompound | null, reduced: number, 
     outcomeLogic: over.outcomeLogic ?? base.outcomeLogic,
   };
 }
- 
+
 function scoreFrom(map: ScoreMap<Domain>, domain: Domain): number { return map[domain] ?? 0; }
 function traitFrom(map: ScoreMap<Trait>, trait: Trait): number { return map[trait] ?? 0; }
- 
+
 function ageBand(age: number | null): { label: string; text: string; multiplier: number } {
   if (age === null || Number.isNaN(age)) return { label:'age unavailable', multiplier:1, text:'Because no birth year was supplied, the engine cannot apply age-specific manifestation weighting. The pair is still interpreted, but the app cannot know whether the pattern is likely to manifest as youthful launch, mid-life restructuring, or elder legacy reckoning.' };
   if (age < 20) return { label:`age ${age} formation window`, multiplier:.92, text:`At age ${age}, the pattern usually expresses through education, family, identity formation, first opportunities, body safety, and the institutions around the person rather than through full public destiny.` };
@@ -389,28 +402,76 @@ function ageBand(age: number | null): { label: string; text: string; multiplier:
   if (age <= 55) return { label:`age ${age} consolidation window`, multiplier:1.15, text:`At age ${age}, the same compounds test what has already been built: career structure, marriage, reputation, money, health routines, and authority. The year is less about becoming visible for the first time and more about whether existing structures can survive pressure.` };
   return { label:`age ${age} legacy window`, multiplier:1.25, text:`At age ${age}, the pair should be weighted toward law, health, succession, reputation, accumulated karma, legacy, and the verdict of history. Elder years make warning phrases more literal because consequences have had decades to gather.` };
 }
- 
+
 function ageResonance(age: number | null, args: BuildArgs): string[] {
   if (age === null) return [];
   const notes: string[] = [];
-  if (age === args.directRaw) notes.push(`Age ${age} exactly equals the Direct raw compound ${args.directRaw}; the visible layer becomes unusually literal.`);
-  if (age === args.classicRaw) notes.push(`Age ${age} exactly equals the Classic raw compound ${args.classicRaw}; the karmic storyline becomes unusually literal.`);
+  if (age === args.directRaw) notes.push(`Age ${age} exactly equals the Direct raw compound ${args.directRaw}; the Surface Journey becomes unusually literal.`);
+  if (age === args.classicRaw) notes.push(`Age ${age} exactly equals the Classic raw compound ${args.classicRaw}; the Destiny Blueprint becomes unusually literal.`);
   if (age >= 27 && age <= 31) notes.push('This is a first Saturn-return zone; law, work, body, responsibility, and adult identity become harder to avoid.');
   if (age >= 39 && age <= 42) notes.push('This is a mid-life threshold; relationship, career, mortality, and authenticity themes become more existential.');
   if (age >= 58 && age <= 60) notes.push('This is a second-Saturn zone; health, duty, leadership handover, and legacy review intensify.');
   if (age >= 72) notes.push('This is an elder-legacy zone; the reading should prioritize succession, history, mortality, and karmic harvest.');
   return notes;
 }
- 
+
 function pairKey(args: BuildArgs): string { return `${cnum(args.directCompound, args.directRaw)}-${cnum(args.classicCompound, args.classicRaw)}`; }
 function pairArchetype(args: BuildArgs): PairArchetype | null { return PAIR_ARCHETYPES[pairKey(args)] ?? null; }
- 
+
 function domainOverlap(a: ScoreMap<Domain>, b: ScoreMap<Domain>): number {
   let num = 0, den = 0;
   for (const domain of ALL_DOMAINS) { const av = a[domain] ?? 0; const bv = b[domain] ?? 0; num += Math.min(av, bv); den += Math.max(av, bv); }
   return den ? num / den : 0;
 }
- 
+
+/**
+ * Cosine similarity between the Direct and Classic domain vectors. Unlike
+ * domainOverlap (a Jaccard-style ratio used for historical matching), this is
+ * the number the engine reports to the person as "how much do the two
+ * essences agree" — it is stable under scaling and penalizes essences that
+ * are strong in different domains even if their *totals* are similar.
+ */
+function domainCosine(a: ScoreMap<Domain>, b: ScoreMap<Domain>): number {
+  let dot = 0, magA = 0, magB = 0;
+  for (const domain of ALL_DOMAINS) {
+    const av = a[domain] ?? 0, bv = b[domain] ?? 0;
+    dot += av * bv; magA += av * av; magB += bv * bv;
+  }
+  const denom = Math.sqrt(magA) * Math.sqrt(magB);
+  return denom ? clamp01(dot / denom) : 0;
+}
+
+/** Same idea applied to the trait vectors, so polarity-level agreement (not
+ * just domain overlap) feeds into the reported agreement index. */
+function traitCosine(a: ScoreMap<Trait>, b: ScoreMap<Trait>): number {
+  let dot = 0, magA = 0, magB = 0;
+  for (const trait of ALL_TRAITS) {
+    const av = a[trait] ?? 0, bv = b[trait] ?? 0;
+    dot += av * bv; magA += av * av; magB += bv * bv;
+  }
+  const denom = Math.sqrt(magA) * Math.sqrt(magB);
+  return denom ? clamp01(dot / denom) : 0;
+}
+
+/**
+ * Agreement index (0–100): how strongly the Direct (Surface Journey) and
+ * Classic (Destiny Blueprint) essences point at the same domains and traits.
+ * A pair archetype is direct evidence that a master numerologist has already
+ * read this exact pair as one coherent story, so it lifts the floor.
+ */
+function agreementIndex(directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence, archetype: PairArchetype | null): number {
+  const domainAgreement = domainCosine(directIntel.domains, classicIntel.domains);
+  const traitAgreement = traitCosine(directIntel.traits, classicIntel.traits);
+  const polarityAgreement = directIntel.polarity === classicIntel.polarity ? 1 : (
+    (directIntel.polarity === 'threshold' || classicIntel.polarity === 'threshold') ? .5 : 0
+  );
+  const archetypeFloor = archetype ? .35 : 0;
+  const raw = domainAgreement * .45 + traitAgreement * .35 + polarityAgreement * .2;
+  return Math.round(clamp01(Math.max(raw, archetypeFloor * .01 + raw * (1 - archetypeFloor))) * 100 * (1) + archetypeFloor * 100 * .15) > 100
+    ? 100
+    : Math.round(clamp01(raw + archetypeFloor * .15) * 100);
+}
+
 function pairSimilarity(args: BuildArgs, hist: HistoricalCase, directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence): number {
   const direct = cnum(args.directCompound, args.directRaw);
   const classic = cnum(args.classicCompound, args.classicRaw);
@@ -432,14 +493,31 @@ function pairSimilarity(args: BuildArgs, hist: HistoricalCase, directIntel: Comp
   if (args.visibility && args.visibility === hist.visibility) score += .025;
   return clamp01(score);
 }
- 
+
 function nearestCluster(args: BuildArgs, directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence) {
   return HISTORICAL_CASE_LIBRARY
     .map(h => ({ ...h, similarity: pairSimilarity(args, h, directIntel, classicIntel) }))
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, 6);
 }
- 
+
+/**
+ * Historical confidence (0–100): how much the top analogue stands out from
+ * the rest of the cluster. If case #1 is far ahead of #2–#6, the historical
+ * calibration is trustworthy. If the top six are bunched together, several
+ * competing storylines fit about equally well, and the forecast should read
+ * as more provisional than definitive.
+ */
+function historicalConfidence(cluster: ReturnType<typeof nearestCluster>): number {
+  if (!cluster.length) return 0;
+  const top = cluster[0].similarity;
+  if (top <= 0) return 0;
+  const rest = cluster.slice(1);
+  const avgRest = rest.length ? rest.reduce((a, c) => a + c.similarity, 0) / rest.length : 0;
+  const separation = clamp01((top - avgRest) / Math.max(top, 0.01));
+  return Math.round(clamp01(top * .6 + separation * .4) * 100);
+}
+
 function buildDomainScores(args: BuildArgs, directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence, cluster: ReturnType<typeof nearestCluster>, archetype: PairArchetype | null): Record<Domain, number> {
   const scores: Record<Domain, number> = Object.fromEntries(ALL_DOMAINS.map(k => [k, 0])) as Record<Domain, number>;
   const totalSim = cluster.reduce((a, c) => a + c.similarity, 0) || 1;
@@ -447,38 +525,68 @@ function buildDomainScores(args: BuildArgs, directIntel: CompoundIntelligence, c
     const historical = cluster.reduce((a, c) => a + c.similarity * (c.domains[domain] ?? 0), 0) / totalSim;
     const direct = directIntel.domains[domain] ?? 0;
     const classic = classicIntel.domains[domain] ?? 0;
-    const reinforcement = direct >= .55 && classic >= .55 ? .08 : 0;
+    // Reinforcement now scales with how strongly both essences agree on this
+    // domain, rather than a flat bonus once a fixed threshold is crossed —
+    // a domain both essences rate at .9 should outrank one both rate at .56.
+    const reinforcement = direct >= .55 && classic >= .55 ? .04 + Math.min(direct, classic) * .06 : 0;
     const boost = archetype?.domainBoost?.[domain] ?? 0;
     // The percentages are historically anchored first, then corrected by the compound pair.
     scores[domain] = clamp01(historical * .62 + Math.max(direct, classic) * .25 + ((direct + classic) / 2) * .13 + reinforcement + boost);
   }
   return scores;
 }
- 
+
 function rankedDomains(scores: Record<Domain, number>): Array<{ domain: Domain; score: number }> {
   return ALL_DOMAINS.map(domain => ({ domain, score: scores[domain] })).sort((a, b) => b.score - a.score);
 }
- 
-function detectReinforcements(directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence): string[] {
-  return ALL_DOMAINS.filter(domain => (directIntel.domains[domain] ?? 0) >= .55 && (classicIntel.domains[domain] ?? 0) >= .55)
-    .sort((a,b) => ((directIntel.domains[b] ?? 0)+(classicIntel.domains[b] ?? 0))-((directIntel.domains[a] ?? 0)+(classicIntel.domains[a] ?? 0)))
-    .slice(0, 5)
-    .map(d => DOMAIN_LABELS[d]);
+
+interface ReinforcementSignal { domain: Domain; label: string; strength: number }
+
+function detectReinforcements(directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence): ReinforcementSignal[] {
+  return ALL_DOMAINS
+    .filter(domain => (directIntel.domains[domain] ?? 0) >= .55 && (classicIntel.domains[domain] ?? 0) >= .55)
+    .map(domain => ({
+      domain,
+      label: DOMAIN_LABELS[domain],
+      strength: ((directIntel.domains[domain] ?? 0) + (classicIntel.domains[domain] ?? 0)) / 2,
+    }))
+    .sort((a, b) => b.strength - a.strength)
+    .slice(0, 5);
 }
- 
-function detectConflicts(directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence): string[] {
-  const conflicts: string[] = [];
+
+interface TensionSignal { description: string; strength: number }
+
+function detectConflicts(directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence): TensionSignal[] {
   const dt = directIntel.traits, ct = classicIntel.traits;
-  if (traitFrom(dt,'expansion') > .6 && traitFrom(ct,'contraction') > .45) conflicts.push('external expansion versus internal simplification');
-  if (traitFrom(dt,'contraction') > .55 && traitFrom(ct,'expansion') > .6) conflicts.push('outer narrowing versus inner growth pressure');
-  if (traitFrom(dt,'loss') > .55 && traitFrom(ct,'victory') > .55) conflicts.push('visible loss-pressure versus eventual victory signature');
-  if (traitFrom(dt,'victory') > .55 && traitFrom(ct,'loss') > .55) conflicts.push('outer opportunity versus hidden cost');
-  if (traitFrom(dt,'visibility') > .6 && traitFrom(ct,'withdrawal') > .5) conflicts.push('public visibility versus private retreat');
-  if (traitFrom(dt,'lawPressure') > .55 && traitFrom(ct,'victory') > .55) conflicts.push('formal/legal pressure becoming the road to recognition');
-  if (traitFrom(dt,'danger') > .55 || traitFrom(ct,'danger') > .55) conflicts.push('opportunity operating inside a safety or exposure field');
-  return uniq(conflicts).slice(0, 4);
+  const candidates: TensionSignal[] = [];
+  const add = (condition: boolean, description: string, strength: number) => { if (condition) candidates.push({ description, strength }); };
+
+  add(traitFrom(dt,'expansion') > .6 && traitFrom(ct,'contraction') > .45, 'external expansion versus internal simplification', traitFrom(dt,'expansion') + traitFrom(ct,'contraction'));
+  add(traitFrom(dt,'contraction') > .55 && traitFrom(ct,'expansion') > .6, 'outer narrowing versus inner growth pressure', traitFrom(dt,'contraction') + traitFrom(ct,'expansion'));
+  add(traitFrom(dt,'loss') > .55 && traitFrom(ct,'victory') > .55, 'visible loss-pressure versus eventual victory signature', traitFrom(dt,'loss') + traitFrom(ct,'victory'));
+  add(traitFrom(dt,'victory') > .55 && traitFrom(ct,'loss') > .55, 'outer opportunity versus hidden cost', traitFrom(dt,'victory') + traitFrom(ct,'loss'));
+  add(traitFrom(dt,'visibility') > .6 && traitFrom(ct,'withdrawal') > .5, 'public visibility versus private retreat', traitFrom(dt,'visibility') + traitFrom(ct,'withdrawal'));
+  add(traitFrom(dt,'lawPressure') > .55 && traitFrom(ct,'victory') > .55, 'formal/legal pressure becoming the road to recognition', traitFrom(dt,'lawPressure') + traitFrom(ct,'victory'));
+  add(traitFrom(dt,'danger') > .55 || traitFrom(ct,'danger') > .55, 'opportunity operating inside a safety or exposure field', Math.max(traitFrom(dt,'danger'), traitFrom(ct,'danger')));
+
+  const seen = new Set<string>();
+  return candidates
+    .filter(c => (seen.has(c.description) ? false : (seen.add(c.description), true)))
+    .sort((a, b) => b.strength - a.strength)
+    .slice(0, 4);
 }
- 
+
+/** Tension index (0–100): the mirror image of agreementIndex, weighted by how
+ * many distinct tension signals fired and how strong the strongest one is.
+ * Reported alongside agreementIndex so "mostly aligned, one sharp tension"
+ * reads differently from "broadly divided." */
+function tensionIndex(agreement: number, conflicts: TensionSignal[]): number {
+  if (!conflicts.length) return Math.max(0, 100 - agreement - 20);
+  const peak = Math.min(1, conflicts[0].strength / 2);
+  const breadth = Math.min(1, conflicts.length / 4);
+  return Math.round(clamp01((1 - agreement / 100) * .5 + peak * .35 + breadth * .15) * 100);
+}
+
 function determinePolarity(directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence): PersonalYearDualEssenceSynthesis['polarity'] {
   const ps = [directIntel.polarity, classicIntel.polarity];
   if (ps.includes('cautionary') && ps.includes('constructive')) return 'mixed ordeal-and-reward';
@@ -487,16 +595,16 @@ function determinePolarity(directIntel: CompoundIntelligence, classicIntel: Comp
   if (ps.includes('threshold')) return 'threshold / transition';
   return 'mixed ordeal-and-reward';
 }
- 
+
 function masterSignal(args: BuildArgs): string | null {
   const parts: string[] = [];
   const directMaster = [11,22,33].includes(args.directRaw) || [11,22,33].includes(args.directYear) || !!args.directCompound?.isMasterNumber;
   const classicMaster = [11,22,33].includes(args.classicRaw) || [11,22,33].includes(args.classicYear) || !!args.classicCompound?.isMasterNumber;
-  if (directMaster) parts.push(`The visible layer carries master-number voltage. That makes the year more symbolic and less ordinary: the public event may look practical, but people will read meaning into it.`);
-  if (classicMaster) parts.push(`The hidden storyline carries master-number voltage. That means the real lesson is not merely personal success or failure; it becomes a teaching, building, or illumination test.`);
+  if (directMaster) parts.push(`The Surface Journey carries master-number voltage. That makes the year more symbolic and less ordinary: the public event may look practical, but people will read meaning into it.`);
+  if (classicMaster) parts.push(`The Destiny Blueprint carries master-number voltage. That means the real lesson is not merely personal success or failure; it becomes a teaching, building, or illumination test.`);
   return parts.length ? parts.join(' ') : null;
 }
- 
+
 function karmicDebtSignal(args: BuildArgs, directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence): string | null {
   const dangerCompounds = [13,14,16,18,26,28,29,35,38,43,47,51,52,53,55,59];
   const active = [cnum(args.directCompound,args.directRaw), cnum(args.classicCompound,args.classicRaw)].filter(n => dangerCompounds.includes(n));
@@ -504,7 +612,7 @@ function karmicDebtSignal(args: BuildArgs, directIntel: CompoundIntelligence, cl
   if (!active.length && danger < .55) return null;
   return `The alert field is active through ${active.length ? active.join(' and ') : 'the compound language itself'}. This should not be read fatalistically. It should be read operationally: contracts, transport, body strain, legal exposure, partner reliability, public conflict, and security deserve concrete preventive action rather than vague worry.`;
 }
- 
+
 function ageWindowName(age: number | null): string {
   if (age === null || Number.isNaN(age)) return 'age unavailable';
   if (age < 20) return 'formation window';
@@ -512,7 +620,7 @@ function ageWindowName(age: number | null): string {
   if (age <= 55) return '35–55 consolidation window';
   return '55+ legacy / reckoning window';
 }
- 
+
 function topCaseDomains(c: HistoricalCase, limit = 5): Domain[] {
   return (Object.entries(c.domains) as Array<[Domain, number]>)
     .filter(([, score]) => score >= 0.55)
@@ -520,7 +628,7 @@ function topCaseDomains(c: HistoricalCase, limit = 5): Domain[] {
     .slice(0, limit)
     .map(([domain]) => domain);
 }
- 
+
 function historicalSimilarityReasons(
   args: BuildArgs,
   c: HistoricalCase & { similarity: number },
@@ -532,21 +640,21 @@ function historicalSimilarityReasons(
   const direct = cnum(args.directCompound, args.directRaw);
   const classic = cnum(args.classicCompound, args.classicRaw);
   const currentAge = typeof args.birthYear === 'number' ? args.targetYear - args.birthYear : null;
- 
+
   if (direct === c.direct && classic === c.classic) {
     reasons.push(`Exact compound-pair match: both charts run Direct ${direct}/${args.directYear} and Classic ${classic}/${args.classicYear}. This is the strongest possible structural similarity.`);
   } else {
-    if (direct === c.direct) reasons.push(`Same Direct compound ${direct}: the visible manifestation field is similar.`);
-    if (classic === c.classic) reasons.push(`Same Classic compound ${classic}: the hidden/karmic storyline is similar.`);
+    if (direct === c.direct) reasons.push(`Same Direct compound ${direct}: the Surface Journey is similar.`);
+    if (classic === c.classic) reasons.push(`Same Classic compound ${classic}: the Destiny Blueprint is similar.`);
     if (direct === c.classic || classic === c.direct) reasons.push(`The same compounds appear in reversed positions, so the story uses similar material but swaps outer event and inner lesson.`);
   }
- 
+
   if (args.directYear === c.directReduced && args.classicYear === c.classicReduced) {
     reasons.push(`Same reduced pair ${args.directYear}/${args.classicYear}: both years resolve into the same single-digit/master-number pressure pattern.`);
   } else if (args.directYear === c.directReduced || args.classicYear === c.classicReduced) {
     reasons.push(`One reduced essence matches exactly, so one half of the year resolves through the same root vibration.`);
   }
- 
+
   if (currentAge !== null) {
     const gap = Math.abs(currentAge - c.age);
     if (ageWindowName(currentAge) === ageWindowName(c.age)) {
@@ -557,32 +665,32 @@ function historicalSimilarityReasons(
       reasons.push(`Age difference is ${gap} years, so the example is used mainly for compound/domain similarity, not life-stage similarity.`);
     }
   }
- 
+
   const currentTop = ranked.slice(0, 7).map(r => r.domain);
   const caseTop = topCaseDomains(c, 7);
   const shared = currentTop.filter(domain => caseTop.includes(domain));
   if (shared.length) {
     reasons.push(`Shared active domains: ${shared.slice(0, 5).map(domain => DOMAIN_LABELS[domain]).join(', ')}. These are the specific life arenas that make the case relevant.`);
   }
- 
+
   const directDomains = Object.entries(directIntel.domains).filter(([, score]) => (score ?? 0) >= 0.65).map(([d]) => d as Domain);
   const classicDomains = Object.entries(classicIntel.domains).filter(([, score]) => (score ?? 0) >= 0.65).map(([d]) => d as Domain);
   const caseDomains = topCaseDomains(c, 10);
   const directShared = directDomains.filter(domain => caseDomains.includes(domain));
   const classicShared = classicDomains.filter(domain => caseDomains.includes(domain));
-  if (directShared.length) reasons.push(`Direct-essence overlap: the example manifested through ${directShared.slice(0, 4).map(domain => DOMAIN_LABELS[domain]).join(', ')}, the same outward channels activated by your Direct essence.`);
-  if (classicShared.length) reasons.push(`Classic-essence overlap: the example's outcome was judged through ${classicShared.slice(0, 4).map(domain => DOMAIN_LABELS[domain]).join(', ')}, matching the deeper storyline of your Classic essence.`);
- 
+  if (directShared.length) reasons.push(`Surface-Journey overlap: the example manifested through ${directShared.slice(0, 4).map(domain => DOMAIN_LABELS[domain]).join(', ')}, the same outward channels activated by your Direct essence.`);
+  if (classicShared.length) reasons.push(`Destiny-Blueprint overlap: the example's outcome was judged through ${classicShared.slice(0, 4).map(domain => DOMAIN_LABELS[domain]).join(', ')}, matching the deeper storyline of your Classic essence.`);
+
   if (args.visibility && args.visibility === c.visibility) reasons.push(`Visibility match: both patterns operate at ${c.visibility} visibility level.`);
   if (args.occupation && args.occupation.toLowerCase().split(/\W+/).some(tok => tok.length > 3 && c.occupation.toLowerCase().includes(tok))) {
     reasons.push(`Occupation/context match: both profiles share ${c.occupation} terrain.`);
   }
- 
+
   reasons.push(`Outcome lesson: the historical outcome was ${c.outcome}; this tells the engine whether the same compound pressure tends to crown, break, redirect, expose, or immortalize the person when the shared domains activate.`);
   return uniq(reasons).slice(0, 8);
 }
- 
- 
+
+
 function digitSumLocal(n: number): number {
   return String(Math.abs(n)).split('').reduce((a, d) => a + Number(d), 0);
 }
@@ -625,7 +733,7 @@ function famousBirthdayPersonalYearMirrors(args: BuildArgs): string {
   if (!rows.length) return `Famous birthday personal-year mirrors:\nNo famous-birthday record in the current bank strongly mirrors this Direct/Classic personal-year pattern for ${args.targetYear}.`;
   return `Famous birthday personal-year mirrors from ${famousBirthdays.length} stored profiles:\n${rows.map(r => `• ${r.p.name} — ${r.score}% mirror. ${r.fd}/${r.frd} direct, ${r.fc}/${r.frc} classic. Shared signals: ${r.reasons.join(', ')}. Tags: ${(r.p.tags || []).slice(0, 4).join(', ') || '—'}.`).join('\n')}`;
 }
- 
+
 function makeHistoricalText(
   args: BuildArgs,
   directIntel: CompoundIntelligence,
@@ -648,26 +756,26 @@ function makeHistoricalText(
     return `• ${c.person} ${c.year} — ${pct(c.similarity)}% similarity.\nSpecific similarities:\n${reasons}\nWhat happened: ${eventDate} ${details}\nHow it supports or qualifies this reading: ${c.narrative}\nGuardrail / false-positive lesson: ${c.falsePositives[0]}\n${sourceText}`;
   }).join('\n\n')}`;
 }
- 
+
 function formatDomainRanking(ranked: Array<{domain: Domain; score: number}>): string {
   return ranked.slice(0, 8).map((r, i) => `${i + 1}. ${DOMAIN_LABELS[r.domain]} — ${pct(r.score)}%`).join('\n');
 }
- 
+
 function topDomainNames(ranked: Array<{domain: Domain; score: number}>): string[] { return ranked.slice(0, 8).map(r => `${DOMAIN_LABELS[r.domain]} ${pct(r.score)}%`); }
- 
+
 function buildDecisionForecasts(archetype: PairArchetype | null, ranked: Array<{domain: Domain; score: number}>, directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence): string[] {
   const out = [...(archetype?.decisionForecasts ?? [])];
   const top = ranked.slice(0, 5).map(r => r.domain);
   if (top.includes('law')) out.push('You will probably become less tolerant of unclear agreements; if something cannot be written clearly, you will start treating it as unsafe.');
   if (top.includes('leadership')) out.push('You are likely to stop waiting for consensus in at least one situation and act as if the responsibility is already yours.');
-  if (top.includes('money')) out.push('Money decisions become faster, but the better prediction is not “more money”; it is a sharper distinction between assets that strengthen your position and commitments that trap liquidity.');
+  if (top.includes('money')) out.push('Money decisions become faster, but the better prediction is not "more money"; it is a sharper distinction between assets that strengthen your position and commitments that trap liquidity.');
   if (top.includes('relationships')) out.push('You will test people by reliability rather than affection; one alliance may become more formal, while another becomes obviously too expensive emotionally or practically.');
   if (top.includes('health') || top.includes('security')) out.push('You may decide to slow, cancel, insure, document, or redesign a plan that initially looked exciting because the risk-to-reward ratio becomes impossible to ignore.');
-  if (top.includes('creativeOutput')) out.push('You are likely to choose one message, product, paper, campaign, or performance as the year’s main vehicle and let lesser ideas become secondary.');
+  if (top.includes('creativeOutput')) out.push('You are likely to choose one message, product, paper, campaign, or performance as the year\u2019s main vehicle and let lesser ideas become secondary.');
   if (traitFrom(directIntel.traits,'competition') > .6 || traitFrom(classicIntel.traits,'competition') > .6) out.push('You become more strategic about opposition: not every fight receives your energy, but the fight that affects your road receives full attention.');
   return uniq(out).slice(0, 8);
 }
- 
+
 function buildPersonalityShift(archetype: PairArchetype | null, ranked: Array<{domain: Domain; score: number}>, directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence): string {
   if (archetype?.personalityShift) return archetype.personalityShift;
   const top = ranked[0]?.domain;
@@ -680,8 +788,8 @@ function buildPersonalityShift(archetype: PairArchetype | null, ranked: Array<{d
   if (traitFrom(directIntel.traits,'withdrawal') > .55 || traitFrom(classicIntel.traits,'withdrawal') > .55) return 'You become quieter, more observant, and more difficult to impress. People may interpret this as distance, but the real shift is discrimination.';
   return 'You become more exacting. The year reduces tolerance for vague motives and pushes you to act from the part of you that already knows what matters.';
 }
- 
-function buildOutcomePrediction(archetype: PairArchetype | null, ranked: Array<{domain: Domain; score: number}>, conflicts: string[], reinforcements: string[], polarity: PersonalYearDualEssenceSynthesis['polarity']): string {
+
+function buildOutcomePrediction(archetype: PairArchetype | null, ranked: Array<{domain: Domain; score: number}>, conflicts: TensionSignal[], reinforcements: ReinforcementSignal[], polarity: PersonalYearDualEssenceSynthesis['polarity']): string {
   if (archetype?.outcomePrediction) return archetype.outcomePrediction;
   const top = ranked[0];
   const second = ranked[1];
@@ -691,7 +799,7 @@ function buildOutcomePrediction(archetype: PairArchetype | null, ranked: Array<{
   if (polarity === 'predominantly constructive') return `${base} The outcome is likely to be constructive if you do not dilute the main opportunity. The risk is not absence of luck; it is wasting favourable timing through scattered attention or weak structure.`;
   return `${base} The outcome is transitional: something changes form, status, duty, or definition. The year succeeds if the new structure is stronger than the one it replaces.`;
 }
- 
+
 function buildProtectiveStrategy(archetype: PairArchetype | null, ranked: Array<{domain: Domain; score: number}>): string {
   if (archetype?.protectiveStrategy) return archetype.protectiveStrategy;
   const top = ranked.slice(0, 4).map(r => r.domain);
@@ -702,29 +810,29 @@ function buildProtectiveStrategy(archetype: PairArchetype | null, ranked: Array<
   if (top.includes('creativeOutput')) return 'Protect the central message from dilution. Say no to secondary platforms, projects, and audiences if they weaken the one work that can carry the year.';
   return 'Translate the reading into one concrete control: written terms, fewer distractions, better timing, physical protection, or a clearer chain of authority.';
 }
- 
-function titleFor(args: BuildArgs, archetype: PairArchetype | null, ranked: Array<{domain: Domain; score: number}>, conflicts: string[]): string {
+
+function titleFor(args: BuildArgs, archetype: PairArchetype | null, ranked: Array<{domain: Domain; score: number}>, conflicts: TensionSignal[]): string {
   if (archetype) return archetype.title;
   const d = cnum(args.directCompound, args.directRaw);
   const c = cnum(args.classicCompound, args.classicRaw);
-  if (conflicts.length) return `${DOMAIN_LABELS[ranked[0].domain]} Under Contradiction`;
+  if (conflicts.length) return `${DOMAIN_LABELS[ranked[0].domain]} in Complementary Tension`;
   if (d === c) return `The Reinforced ${DOMAIN_LABELS[ranked[0].domain]} Year`;
   return `The ${DOMAIN_LABELS[ranked[0].domain]} Year with ${DOMAIN_LABELS[ranked[1].domain]} Consequence`;
 }
- 
-function buildDominantDiagnosis(archetype: PairArchetype | null, args: BuildArgs, directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence, ranked: Array<{domain: Domain; score: number}>, conflicts: string[], reinforcements: string[]): string {
+
+function buildDominantDiagnosis(archetype: PairArchetype | null, args: BuildArgs, directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence, ranked: Array<{domain: Domain; score: number}>, conflicts: TensionSignal[], reinforcements: ReinforcementSignal[]): string {
   if (archetype) return archetype.thesis;
   const top = ranked[0];
   const second = ranked[1];
-  const conflictLine = conflicts.length ? `The contradiction that deserves attention is ${conflicts[0]}. This means people outside may notice one story while you experience another.` : '';
-  const reinforceLine = reinforcements.length ? `The reinforcement is strongest around ${reinforcements.slice(0,3).join(', ')}; those areas should not be treated as background themes.` : '';
-  return `The pattern emerging from ${label(args.directRaw,args.directYear,args.directCompound)} and ${label(args.classicRaw,args.classicYear,args.classicCompound)} is a single story about ${DOMAIN_LABELS[top.domain].toLowerCase()} being shaped by ${DOMAIN_LABELS[second.domain].toLowerCase()}. The visible layer pushes through ${directIntel.thesis}; the hidden layer judges the year through ${classicIntel.thesis}. ${conflictLine} ${reinforceLine}`.replace(/\s+/g,' ').trim();
+  const conflictLine = conflicts.length ? `The tension that deserves attention is ${conflicts[0].description}. This means people outside may notice one story while you experience another.` : '';
+  const reinforceLine = reinforcements.length ? `The reinforcement is strongest around ${reinforcements.slice(0,3).map(r => r.label).join(', ')}; those areas should not be treated as background themes.` : '';
+  return `The pattern emerging from ${label(args.directRaw,args.directYear,args.directCompound)} and ${label(args.classicRaw,args.classicYear,args.classicCompound)} is a single story about ${DOMAIN_LABELS[top.domain].toLowerCase()} being shaped by ${DOMAIN_LABELS[second.domain].toLowerCase()}. The Surface Journey pushes through ${directIntel.thesis}; the Destiny Blueprint judges the year through ${classicIntel.thesis}. ${conflictLine} ${reinforceLine}`.replace(/\s+/g,' ').trim();
 }
- 
+
 function buildFeedbackLoopText(): string {
   return 'At the end of the year, the app should ask you to score career, relationships, health, money, travel, legal matters, family, major events, unexpected events, severity, and perceived accuracy. That record should become new training data. The next user with a similar compound pair should then be compared not only to famous public lives, but also to completed private-year outcomes.';
 }
- 
+
 function intensityScore(args: BuildArgs, ageMultiplier: number, domainScores: Record<Domain, number>, cluster: ReturnType<typeof nearestCluster>, directIntel: CompoundIntelligence, classicIntel: CompoundIntelligence): number {
   const top = Math.max(...Object.values(domainScores));
   const clusterStrength = cluster[0]?.similarity ?? 0;
@@ -732,28 +840,102 @@ function intensityScore(args: BuildArgs, ageMultiplier: number, domainScores: Re
   const master = [11,22,33].includes(args.directYear) || [11,22,33].includes(args.classicYear) || !!args.directCompound?.isMasterNumber || !!args.classicCompound?.isMasterNumber ? .08 : 0;
   return Math.min(100, Math.round((.46 + top * .24 + clusterStrength * .18 + danger * .12 + master) * 100 * ageMultiplier));
 }
- 
-function fullSynthesisText(args: BuildArgs, title: string, subtitle: string, diagnosis: string, ranked: Array<{domain: Domain; score: number}>, clusterText: string, conflicts: string[], reinforcements: string[], decisions: string[], personality: string, outcome: string, protection: string, ageText: string, master: string | null, karmic: string | null, intensity: number): string {
-  const conflictParagraph = conflicts.length
-    ? `The contradiction is not a problem to average out; it is the mechanism of the year. ${conflicts.map(c => `The pattern shows ${c}`).join('; ')}. In practice, this means the visible event and the private experience may not match. Others may call it expansion while you experience subtraction, or they may see victory while you are busy managing risk.`
-    : 'There is no major contradiction requiring a forced compromise. The two compounds mostly point in the same direction, so the correct reading is amplification rather than balance.';
+
+/**
+ * THE COMPLEMENTARY BRIDGE — the centerpiece of the upgraded engine. Rather
+ * than presenting the Direct and Classic essences as two separate readings
+ * that the person must reconcile on their own, this explicitly narrates how
+ * they combine: Direct = Surface Journey (what happens), Classic = Destiny
+ * Blueprint (what it means). When a pair archetype exists, its thesis IS the
+ * bridge — that thesis was written specifically to describe how this exact
+ * pair behaves as one story. When no archetype exists, the bridge is built
+ * from the measured agreement/tension signals instead of a generic template.
+ */
+function buildComplementaryBridge(
+  args: BuildArgs,
+  directIntel: CompoundIntelligence,
+  classicIntel: CompoundIntelligence,
+  archetype: PairArchetype | null,
+  conflicts: TensionSignal[],
+  reinforcements: ReinforcementSignal[],
+  agreement: number,
+  tension: number
+): string {
+  const directLabel = label(args.directRaw, args.directYear, args.directCompound);
+  const classicLabel = label(args.classicRaw, args.classicYear, args.classicCompound);
+
+  const parts: string[] = [];
+
+  parts.push(`Your Direct essence — ${directLabel} — is your SURFACE JOURNEY. It describes the visible terrain: the external events, public drama, literal circumstances, and surface-level pressure that will shape ${args.targetYear}. Think of it as the weather you walk through. It answers: "What is happening TO me?"`);
+
+  parts.push(`Your Classic essence — ${classicLabel} — is your DESTINY BLUEPRINT. It describes the underlying pattern: the deeper meaning, the karmic outcome, and the lesson the year is built to teach. Think of it as the map that explains why the terrain looks the way it does. It answers: "What does it MEAN?"`);
+
+  if (archetype) {
+    parts.push(`For ${args.targetYear}, these two essences tell one coherent story: ${archetype.thesis}`);
+  } else if (agreement >= 60) {
+    parts.push(`For ${args.targetYear}, the two essences largely agree (${agreement}% measured agreement). What you see on the surface is close to what is actually happening at depth — the correct posture is amplification, not reconciliation.`);
+  } else if (tension >= 55) {
+    parts.push(`For ${args.targetYear}, the two essences pull toward different domains (${agreement}% measured agreement, ${tension}% measured tension). This is not a contradiction to average away — it is a COMPLEMENTARY TENSION. When the Surface Journey looks harder than the Destiny Blueprint, the coherent reading is victory THROUGH trial, not victory INSTEAD OF trial. When the Surface Journey looks easier than the Destiny Blueprint, the coherent reading is that the bill arrives later, not never.`);
+  } else {
+    parts.push(`For ${args.targetYear}, the two essences partially overlap (${agreement}% measured agreement). Some domains are reinforced by both essences and some are carried by only one — read the reinforced domains as the load-bearing themes of the year and the rest as secondary weather.`);
+  }
+
+  if (reinforcements.length) {
+    parts.push(`REINFORCED DOMAINS: ${reinforcements.map(r => r.label).join(', ')}. When both essences agree on a domain, probability shifts from "possible theme" to "likely stage." Concentrate attention and strategy here — this is where the year's energy is most concentrated and most predictable.`);
+  }
+
+  if (conflicts.length) {
+    parts.push(`TENSION AREAS: ${conflicts.map(c => c.description).join('; ')}. In practice, the visible event and the private experience may not match — others may call it expansion while you experience subtraction, or see victory while you manage risk. This dissonance is not an error in the reading; it is the reading. The year teaches through the gap between appearance and reality.`);
+  }
+
+  parts.push(`CONSULTANT'S PRINCIPLE: Do not ask "Which system is right?" Ask "What story do both systems tell together?" The Surface Journey without the Destiny Blueprint is a weather report without a forecast. The Destiny Blueprint without the Surface Journey is a prophecy without a landscape. Only together do they become a navigable prediction.`);
+
+  return parts.join('\n\n');
+}
+
+function fullSynthesisText(
+  args: BuildArgs,
+  title: string,
+  subtitle: string,
+  diagnosis: string,
+  ranked: Array<{ domain: Domain; score: number }>,
+  clusterText: string,
+  conflicts: TensionSignal[],
+  reinforcements: ReinforcementSignal[],
+  decisions: string[],
+  personality: string,
+  outcome: string,
+  protection: string,
+  ageText: string,
+  master: string | null,
+  karmic: string | null,
+  intensity: number,
+  bridge: string,
+  agreement: number,
+  confidence: number
+): string {
+  const tensionParagraph = conflicts.length
+    ? `This year carries complementary tension — not contradiction, but the natural gap between surface events and deeper meaning. ${conflicts.map(c => `The pattern shows ${c.description}`).join('; ')}. The Surface Journey describes what happens; the Destiny Blueprint describes what it means. The art of navigating this year lies in holding both simultaneously: acting on the surface while reading the depth.`
+    : 'The two essences mostly align. The Surface Journey and the Destiny Blueprint point in the same direction, so the correct reading is amplification rather than reconciliation — what you see is what you get, but get it fully.';
+
   const reinforcementParagraph = reinforcements.length
-    ? `The reinforced domains are ${reinforcements.join(', ')}. Reinforcement matters because it changes probability: these areas move from “possible theme” to “likely stage.” Do not scatter attention evenly across the whole life; concentrate strategy where the pair repeats itself.`
+    ? `The reinforced domains are ${reinforcements.map(r => r.label).join(', ')}. When both essences agree on a domain, probability shifts from "possible" to "probable." Do not scatter attention evenly across life; concentrate strategy where the pair repeats itself.`
     : 'The pair does not heavily reinforce one single domain, so the year is more adaptive. The practical task is to notice which domain activates first and then interpret the other domains through that opening.';
- 
+
   return [
-    `FORENSIC PERSONAL YEAR SYNTHESIS\n${title}\n${subtitle}\n\nThe strongest question is not “what does each compound mean?” The stronger question is: if these two compounds are trying to tell one coherent story about ${args.targetYear}, what is that story? ${diagnosis}`,
-    `\n1. HISTORICAL PATTERN DETECTION\n${clusterText}`,
-    `\n2. DOMINANT ESSENCE AND CONFLICT RESOLUTION\n${conflictParagraph}\n\n${reinforcementParagraph}`,
-    `\n3. MANIFESTATION PROBABILITY MAP\n${formatDomainRanking(ranked)}\n\nThese percentages are not random decoration. They come from the closest historical cluster, corrected by the Direct/Classic pair and boosted where both compounds reinforce the same domain. A low percentage does not mean “nothing can happen” there; it means the year is less likely to choose that domain as its main stage.`,
-    `\n4. BEHAVIOUR AND DECISION FORECAST\nPersonality shift: ${personality}\n\nLikely decisions:\n${decisions.map(x => `• ${x}`).join('\n')}`,
-    `\n5. OUTCOME FORECAST\n${outcome}`,
-    `\n6. PROTECTIVE STRATEGY\n${protection}\n\nThis is intentionally specific. Generic advice such as “work hard” is too weak for this engine. The protective move must match the highest-probability manifestation field, because historical analogues show that the same compound pair can become triumph or loss depending on where the person failed to protect the obvious weak point.`,
-    `\n7. AGE, MASTER AND ALERT MODIFIERS\n${ageText}\n\n${master ? `Master-number note: ${master}` : 'No master-number override dominates the pair.'}\n\n${karmic ? `Alert note: ${karmic}` : 'No severe alert compound dominates the pair; ordinary prudence is enough unless the year activates a high-risk domain.'}\n\nIntensity score: ${intensity}/100. High intensity means the pattern is more likely to become concrete and visible; it does not mean the year is automatically good or bad.`,
-    `\n8. FEEDBACK LOOP\n${buildFeedbackLoopText()}`,
+    `FORENSIC PERSONAL YEAR SYNTHESIS\n${title}\n${subtitle}\n\nThe strongest question is not "what does each compound mean?" The stronger question is: if these two essences are trying to tell one coherent story about ${args.targetYear}, what is that story? ${diagnosis}`,
+    `\n1. THE COMPLEMENTARY BRIDGE\n${bridge}`,
+    `\n2. HISTORICAL PATTERN DETECTION (historical confidence: ${confidence}/100)\n${clusterText}`,
+    `\n3. DOMINANT ESSENCE AND TENSION RESOLUTION (essence agreement: ${agreement}/100)\n${tensionParagraph}\n\n${reinforcementParagraph}`,
+    `\n4. MANIFESTATION PROBABILITY MAP\n${formatDomainRanking(ranked)}\n\nThese percentages are not random decoration. They come from the closest historical cluster, corrected by the Direct/Classic pair and boosted where both essences reinforce the same domain. A low percentage does not mean "nothing can happen" there; it means the year is less likely to choose that domain as its main stage.`,
+    `\n5. BEHAVIOUR AND DECISION FORECAST\nPersonality shift: ${personality}\n\nLikely decisions:\n${decisions.map(x => `• ${x}`).join('\n')}`,
+    `\n6. OUTCOME FORECAST\n${outcome}`,
+    `\n7. PROTECTIVE STRATEGY\n${protection}\n\nThis is intentionally specific. Generic advice such as "work hard" is too weak for this engine. The protective move must match the highest-probability manifestation field, because historical analogues show that the same compound pair can become triumph or loss depending on where the person failed to protect the obvious weak point.`,
+    `\n8. AGE, MASTER AND ALERT MODIFIERS\n${ageText}\n\n${master ? `Master-number note: ${master}` : 'No master-number override dominates the pair.'}\n\n${karmic ? `Alert note: ${karmic}` : 'No severe alert compound dominates the pair; ordinary prudence is enough unless the year activates a high-risk domain.'}\n\nIntensity score: ${intensity}/100. High intensity means the pattern is more likely to become concrete and visible; it does not mean the year is automatically good or bad.`,
+    `\n9. FEEDBACK LOOP\n${buildFeedbackLoopText()}`,
   ].join('\n');
 }
- 
+
 export function buildPersonalYearDualEssenceSynthesis(args: BuildArgs): PersonalYearDualEssenceSynthesis {
   const directIntel = intelligenceFor(args.directCompound, args.directYear, args.directRaw);
   const classicIntel = intelligenceFor(args.classicCompound, args.classicYear, args.classicRaw);
@@ -770,7 +952,10 @@ export function buildPersonalYearDualEssenceSynthesis(args: BuildArgs): Personal
   const karmic = karmicDebtSignal(args, directIntel, classicIntel);
   const polarity = determinePolarity(directIntel, classicIntel);
   const title = titleFor(args, archetype, ranked, conflicts);
-  const subtitle = `${label(args.directRaw,args.directYear,args.directCompound)} × ${label(args.classicRaw,args.classicYear,args.classicCompound)} · ${ageInfo.label} · ${polarity}`;
+  const agreement = agreementIndex(directIntel, classicIntel, archetype);
+  const tension = tensionIndex(agreement, conflicts);
+  const confidence = historicalConfidence(cluster);
+  const subtitle = `${label(args.directRaw, args.directYear, args.directCompound)} × ${label(args.classicRaw, args.classicYear, args.classicCompound)} · ${ageInfo.label} · ${polarity}`;
   const clusterText = makeHistoricalText(args, directIntel, classicIntel, ranked, cluster);
   const diagnosis = buildDominantDiagnosis(archetype, args, directIntel, classicIntel, ranked, conflicts, reinforcements);
   const decisions = buildDecisionForecasts(archetype, ranked, directIntel, classicIntel);
@@ -779,10 +964,28 @@ export function buildPersonalYearDualEssenceSynthesis(args: BuildArgs): Personal
   const protection = buildProtectiveStrategy(archetype, ranked);
   const ageText = [ageInfo.text, ...resonance].join('\n\n');
   const intensity = intensityScore(args, ageInfo.multiplier, domainScores, cluster, directIntel, classicIntel);
-  const synthesisText = fullSynthesisText(args, title, subtitle, diagnosis, ranked, clusterText, conflicts, reinforcements, decisions, personality, outcome, protection, ageText, master, karmic, intensity);
-  const directEssenceRole = `Visible trigger layer: ${label(args.directRaw,args.directYear,args.directCompound)} tends to manifest through ${Object.entries(directIntel.domains).sort((a,b)=>(b[1]??0)-(a[1]??0)).slice(0,4).map(([k]) => DOMAIN_LABELS[k as Domain]).join(', ')}. Consultant reading: ${directIntel.thesis}`;
-  const classicEssenceRole = `Hidden storyline layer: ${label(args.classicRaw,args.classicYear,args.classicCompound)} tends to judge the outcome through ${Object.entries(classicIntel.domains).sort((a,b)=>(b[1]??0)-(a[1]??0)).slice(0,4).map(([k]) => DOMAIN_LABELS[k as Domain]).join(', ')}. Consultant reading: ${classicIntel.thesis}`;
- 
+  const bridge = buildComplementaryBridge(args, directIntel, classicIntel, archetype, conflicts, reinforcements, agreement, tension);
+
+  const synthesisText = fullSynthesisText(
+    args, title, subtitle, diagnosis, ranked, clusterText,
+    conflicts, reinforcements, decisions, personality, outcome,
+    protection, ageText, master, karmic, intensity, bridge, agreement, confidence
+  );
+
+  const directTopDomains = Object.entries(directIntel.domains)
+    .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+    .slice(0, 4)
+    .map(([k]) => DOMAIN_LABELS[k as Domain]);
+
+  const classicTopDomains = Object.entries(classicIntel.domains)
+    .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+    .slice(0, 4)
+    .map(([k]) => DOMAIN_LABELS[k as Domain]);
+
+  const directEssenceRole = `THE SURFACE JOURNEY (Direct Essence): ${label(args.directRaw, args.directYear, args.directCompound)} describes the visible terrain — the external events, public drama, literal circumstances, and surface-level challenges that will shape your year. It is what happens TO you. This essence manifests most strongly through: ${directTopDomains.join(', ')}.\n\nConsultant reading: ${directIntel.thesis}\n\nSurface-level mistake to avoid: ${directIntel.likelyMistake}\n\nSurface-level strategic move: ${directIntel.strategicMove}`;
+
+  const classicEssenceRole = `THE DESTINY BLUEPRINT (Classic Essence): ${label(args.classicRaw, args.classicYear, args.classicCompound)} describes the underlying pattern — the deeper meaning, karmic outcome, and spiritual lesson the year is designed to teach. It is what the year MEANS. This essence judges the outcome through: ${classicTopDomains.join(', ')}.\n\nConsultant reading: ${classicIntel.thesis}\n\nBlueprint-level mistake to avoid: ${classicIntel.likelyMistake}\n\nBlueprint-level strategic move: ${classicIntel.strategicMove}`;
+
   return {
     title,
     subtitle,
@@ -798,5 +1001,8 @@ export function buildPersonalYearDualEssenceSynthesis(args: BuildArgs): Personal
     domains: ranked.slice(0, 8).map(r => DOMAIN_LABELS[r.domain]),
     polarity,
     intensityScore: intensity,
+    complementaryBridge: bridge,
+    agreementIndex: agreement,
+    historicalConfidence: confidence,
   };
 }
