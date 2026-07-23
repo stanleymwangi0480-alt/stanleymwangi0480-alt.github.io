@@ -21,7 +21,7 @@
  
 import { calculatePsyche, calculateDestiny, generateLoShuData } from "@/lib/numerology";
 import { getLifePathNumber } from "@/lib/numerology/karmic-life-path";
-import { computeRawPersonalYear, computeRawPersonalYearClassic, reduceNum } from "@/lib/numerology/personal-year-full";
+import { computeRawPersonalYear, computeRawPersonalYearClassic, reduceNum, reduceToSingleDigit } from "@/lib/numerology/personal-year-full";
 import { lookupCompound } from "@/lib/numerology/chaldean-pyn-compounds";
 import { calculatePsychomatrix } from "@/lib/numerology/data/psychomatrixData";
 import { getChineseZodiacSign, getWesternZodiacSign } from "@/lib/astrology";
@@ -85,6 +85,49 @@ export interface SoulResonanceReport {
   };
   famousTwins: Array<{ name: string; sharedTrait: string }>;
   reading: string;
+  /** Additive: how each soul's current-cycle personal years collide or
+   * harmonize with the other's. Optional so existing consumers that were
+   * built before this field existed keep compiling and rendering unchanged. */
+  pyInteraction?: PYInteractionAnalysis;
+}
+
+// ---------------------------------------------------------------------
+// Soul Weather: Direct + Classic personal-year readings with karmic/master
+// awareness, wired to the app's own compound dictionary and famous-birthday
+// bank instead of surfacing a bare "PY {number}".
+// ---------------------------------------------------------------------
+
+export interface PYReading {
+  raw: number;
+  reduced: number;
+  compoundName: string | null;
+  isKarmicDebt: boolean;
+  isMasterNumber: boolean;
+  thesis: string;
+}
+
+export interface SoulWeatherReport {
+  soul: SoulVitals;
+  targetYear: number;
+  direct: PYReading;
+  classic: PYReading;
+  age: number | null;
+  ageBand: string;
+  karmicAlert: string | null;
+  masterAlert: string | null;
+  famousMatches: Array<{ name: string; score: number; reasons: string[] }>;
+  forecast: string;
+}
+
+export interface PYInteractionAnalysis {
+  aDirect: PYReading;
+  aClassic: PYReading;
+  bDirect: PYReading;
+  bClassic: PYReading;
+  interactionType: "harmonious" | "challenging" | "neutral" | "karmic-tension" | "master-amplification";
+  narrative: string;
+  warning: string | null;
+  opportunity: string | null;
 }
  
 // ---------------------------------------------------------------------
@@ -141,6 +184,86 @@ const ZODIAC_RELATIONS: Record<
   Pig: { Rat: { relation: "secret-friend", score: 92, note: "Secret friends (六合) — Rat's cleverness + Pig's generosity" }, Ox: { relation: "neutral", score: 70, note: "Ox's labor + Pig's enjoyment" }, Tiger: { relation: "secret-friend", score: 92, note: "Secret friends (六合) — Pig's warmth tames Tiger" }, Rabbit: { relation: "trine", score: 88, note: "Trine allies (三合) — domestic bliss" }, Dragon: { relation: "neutral", score: 60, note: "Dragon's ambition overwhelms Pig's contentment" }, Snake: { relation: "six-clash", score: 35, note: "Six Clash (六冲) — Snake's calculation vs Pig's trust" }, Horse: { relation: "neutral", score: 65, note: "Horse's travel tempts Pig from home" }, Goat: { relation: "trine", score: 88, note: "Trine allies (三合) — artistic, sensual, peaceful" }, Monkey: { relation: "neutral", score: 58, note: "Monkey's tricks exploit Pig's trust" }, Rooster: { relation: "neutral", score: 60, note: "Rooster's criticism hurts Pig's softness" }, Dog: { relation: "neutral", score: 70, note: "Dog's protection + Pig's nourishment" }, Pig: { relation: "same", score: 72, note: "Double indulgence; blissful but potentially lazy" } },
 };
  
+// ---------------------------------------------------------------------
+// Soul Weather static reference data
+// ---------------------------------------------------------------------
+
+const KARMIC_DEBT_NUMBERS = new Set([13, 14, 16, 19]);
+const MASTER_NUMBERS = new Set([11, 22, 33]);
+
+const PY_CORE_THEMES: Record<number, string> = {
+  1: "new beginnings and self-directed initiative",
+  2: "partnership, patience, and diplomacy",
+  3: "expression, socializing, and creative growth",
+  4: "foundation-building, discipline, and steady work",
+  5: "change, freedom, and unexpected movement",
+  6: "responsibility, home, and relationships",
+  7: "reflection, study, and inner development",
+  8: "power, money, and material reckoning",
+  9: "completion, release, and closing a cycle",
+  11: "heightened intuition and spiritual illumination",
+  22: "master-building on a larger, more structural scale",
+  33: "master-level compassionate service and teaching",
+};
+
+interface PYArchetype {
+  label: string;
+  verb: string;
+}
+
+const PY_ARCHETYPES: Record<number, PYArchetype> = {
+  1: { label: "the initiator", verb: "launches" },
+  2: { label: "the diplomat", verb: "cooperates" },
+  3: { label: "the expresser", verb: "performs" },
+  4: { label: "the builder", verb: "consolidates" },
+  5: { label: "the free spirit", verb: "moves" },
+  6: { label: "the caretaker", verb: "tends" },
+  7: { label: "the seeker", verb: "withdraws" },
+  8: { label: "the power-broker", verb: "harvests" },
+  9: { label: "the closer", verb: "releases" },
+};
+
+function archetypeFor(reduced: number): PYArchetype {
+  const base = reduceToSingleDigit(reduced);
+  return PY_ARCHETYPES[base] ?? PY_ARCHETYPES[9];
+}
+
+function ageBandFor(age: number | null): string {
+  if (age === null || Number.isNaN(age)) return "age unavailable";
+  if (age < 20) return "formation window";
+  if (age <= 35) return "launch window";
+  if (age <= 55) return "consolidation window";
+  return "legacy window";
+}
+
+function buildPYReading(raw: number): PYReading {
+  const reduced = reduceNum(raw);
+  const compound = lookupCompound(raw);
+  const isKarmicDebt = KARMIC_DEBT_NUMBERS.has(raw) || !!compound?.isKarmicDebt;
+  const isMasterNumber = MASTER_NUMBERS.has(reduced) || !!compound?.isMasterNumber;
+  const thesis = compound
+    ? compound.vibrationalEssence.split(/\n\n/)[0]
+    : `A ${reduced}-vibration personal year: ${PY_CORE_THEMES[reduced] ?? "a rhythm shaped by that number's own pattern."}`;
+  return {
+    raw,
+    reduced,
+    compoundName: compound?.name ?? null,
+    isKarmicDebt,
+    isMasterNumber,
+    thesis,
+  };
+}
+
+function karmicAlertText(reading: PYReading, who: string): string | null {
+  if (!reading.isKarmicDebt) return null;
+  return `${who} personal year carries karmic-debt voltage (${reading.raw}/${reading.reduced}${reading.compoundName ? ` — ${reading.compoundName}` : ""}). This is not a punishment; it is unfinished business surfacing for resolution, and it rewards structure over improvisation.`;
+}
+
+function masterAlertText(reading: PYReading, who: string): string | null {
+  if (!reading.isMasterNumber) return null;
+  return `${who} personal year resolves to a master number (${reading.reduced}). Expect heightened intensity, more symbolic events, and a lower tolerance for anything half-hearted.`;
+}
+
 // ---------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------
@@ -278,10 +401,65 @@ export function getFamousTwins(a: SoulVitals, b: SoulVitals): Array<{ name: stri
 }
  
 // ---------------------------------------------------------------------
+// Personal Year interaction: how two people's current-cycle personal
+// years collide or harmonize, with explicit karmic-debt / master-number
+// awareness (previously absent from the relationship engine entirely).
+// ---------------------------------------------------------------------
+ 
+function pyInteractionNarrative(aName: string, aArch: PYArchetype, bName: string, bArch: PYArchetype): string {
+  if (aArch === bArch) {
+    return `${aName} and ${bName} are both moving as ${aArch.label} this year — energizing when your aims align, competitive when you both insist on setting the pace.`;
+  }
+  return `${aName} is moving as ${aArch.label} this year (${aArch.verb}), while ${bName} is moving as ${bArch.label} (${bArch.verb}). The pairing works best when each role is consciously divided rather than silently assumed.`;
+}
+ 
+export function analyzePYInteraction(a: SoulVitals, b: SoulVitals, targetYear = new Date().getFullYear()): PYInteractionAnalysis {
+  const aDirect = buildPYReading(computeRawPersonalYear(a.day, a.month, targetYear));
+  const aClassic = buildPYReading(computeRawPersonalYearClassic(a.day, a.month, targetYear));
+  const bDirect = buildPYReading(computeRawPersonalYear(b.day, b.month, targetYear));
+  const bClassic = buildPYReading(computeRawPersonalYearClassic(b.day, b.month, targetYear));
+ 
+  const aArch = archetypeFor(aDirect.reduced);
+  const bArch = archetypeFor(bDirect.reduced);
+  const narrative = pyInteractionNarrative(a.name, aArch, b.name, bArch);
+ 
+  const karmicHits = [aDirect, aClassic, bDirect, bClassic].filter((r) => r.isKarmicDebt);
+  const masterHits = [aDirect, aClassic, bDirect, bClassic].filter((r) => r.isMasterNumber);
+ 
+  let interactionType: PYInteractionAnalysis["interactionType"];
+  let warning: string | null = null;
+  let opportunity: string | null = null;
+ 
+  if (karmicHits.length > 0) {
+    interactionType = "karmic-tension";
+    warning = `${karmicHits.length > 1 ? "Both of you carry" : "One of you carries"} a karmic-debt personal year this cycle (${karmicHits.map((r) => `${r.raw}/${r.reduced}`).join(", ")}). Old, unfinished patterns are likely to resurface in this relationship until they are consciously addressed rather than avoided.`;
+  } else if (masterHits.length > 0) {
+    interactionType = "master-amplification";
+    opportunity = `${masterHits.length > 1 ? "Both of you carry" : "One of you carries"} a master-number personal year this cycle (${masterHits.map((r) => r.reduced).join(", ")}). Anything you build together now has higher-than-usual potential to become significant, provided it is backed by real follow-through rather than only inspiration.`;
+  } else {
+    const aBase = reduceToSingleDigit(aDirect.reduced);
+    const bBase = reduceToSingleDigit(bDirect.reduced);
+    const distance = Math.abs(aBase - bBase);
+    if (distance <= 2) interactionType = "harmonious";
+    else if (distance >= 6) interactionType = "challenging";
+    else interactionType = "neutral";
+  }
+ 
+  if (interactionType === "challenging") {
+    warning = `${a.name} is running a ${aDirect.raw}/${aDirect.reduced} year while ${b.name} is running a ${bDirect.raw}/${bDirect.reduced} year — the two rhythms are pulling in fairly different directions this cycle, so timing and pacing need to be discussed openly rather than assumed.`;
+  }
+  if (interactionType === "harmonious") {
+    opportunity = `${a.name}'s ${aDirect.raw}/${aDirect.reduced} year and ${b.name}'s ${bDirect.raw}/${bDirect.reduced} year are moving in a compatible rhythm this cycle, which makes shared plans easier to time well.`;
+  }
+ 
+  return { aDirect, aClassic, bDirect, bClassic, interactionType, narrative, warning, opportunity };
+}
+ 
+// ---------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------
  
-export function generateSoulResonance(a: SoulVitals, b: SoulVitals): SoulResonanceReport {
+export function generateSoulResonance(a: SoulVitals, b: SoulVitals, targetYear = new Date().getFullYear()): SoulResonanceReport {
   const psychicHarmony = cheiroHarmony(a.psychic, b.psychic);
   const destinyHarmony = cheiroHarmony(a.destiny, b.destiny);
   const lifePathHarmony = cheiroHarmony(a.lifePath, b.lifePath);
@@ -289,6 +467,7 @@ export function generateSoulResonance(a: SoulVitals, b: SoulVitals): SoulResonan
   const chinese = chineseZodiacRelation(a.zodiacAnimal, b.zodiacAnimal);
   const loShu = analyzeLoShuOverlay(a, b);
   const psychoCompare = comparePsychomatrixLines(a, b);
+  const pyInteraction = analyzePYInteraction(a, b, targetYear);
  
   const romanceScore = Math.round(
     psychicHarmony.score * 0.30 + loShu.voidFill.score * 0.25 + chinese.score * 0.20 + johari.score * 0.15 + psychicHarmony.score * 0.10,
@@ -324,6 +503,9 @@ export function generateSoulResonance(a: SoulVitals, b: SoulVitals): SoulResonan
   );
   parts.push(loShu.voidFill.narrative);
   parts.push(loShu.amplification.narrative);
+  parts.push(pyInteraction.narrative);
+  if (pyInteraction.warning) parts.push(pyInteraction.warning);
+  if (pyInteraction.opportunity) parts.push(pyInteraction.opportunity);
  
   return {
     soulA: a, soulB: b, overall,
@@ -334,6 +516,7 @@ export function generateSoulResonance(a: SoulVitals, b: SoulVitals): SoulResonan
     psychomatrixComparison: psychoCompare,
     famousTwins: [],
     reading: parts.join(" "),
+    pyInteraction,
   };
 }
  
@@ -441,6 +624,43 @@ export function getFamousSoulWeather(
   limit = 8,
 ): FamousPersonalYearMatch[] {
   return getFamousPersonalYearMatches(subject, targetYear, limit);
+}
+ 
+// ---------------------------------------------------------------------
+// Soul Weather report: turns the raw PY numbers into a full forecast with
+// compound naming, karmic/master alerts, age band, and famous year-mates —
+// so the dashboard has something richer than "PY {number}" to render.
+// ---------------------------------------------------------------------
+ 
+export function buildSoulWeatherReport(soul: SoulVitals, targetYear = new Date().getFullYear()): SoulWeatherReport {
+  const direct = buildPYReading(computeRawPersonalYear(soul.day, soul.month, targetYear));
+  const classic = buildPYReading(computeRawPersonalYearClassic(soul.day, soul.month, targetYear));
+  const age = typeof soul.year === "number" && !Number.isNaN(soul.year) ? targetYear - soul.year : null;
+  const band = ageBandFor(age);
+  const karmicAlert = karmicAlertText(direct, `${soul.name}'s Direct`) ?? karmicAlertText(classic, `${soul.name}'s Classic`);
+  const masterAlert = masterAlertText(direct, `${soul.name}'s Direct`) ?? masterAlertText(classic, `${soul.name}'s Classic`);
+  const famousMatches = getFamousPersonalYearMatches({ day: soul.day, month: soul.month, year: soul.year, name: soul.name }, targetYear, 5)
+    .map((m) => ({ name: m.soul.name, score: m.score, reasons: m.reasons }));
+ 
+  const forecast = [
+    `${soul.name}'s ${targetYear} personal year runs ${direct.raw}/${direct.reduced}${direct.compoundName ? ` (${direct.compoundName})` : ""} on the surface and ${classic.raw}/${classic.reduced}${classic.compoundName ? ` (${classic.compoundName})` : ""} underneath, in the ${band}.`,
+    direct.thesis,
+    karmicAlert ?? "",
+    masterAlert ?? "",
+  ].filter(Boolean).join(" ");
+ 
+  return {
+    soul,
+    targetYear,
+    direct,
+    classic,
+    age,
+    ageBand: band,
+    karmicAlert,
+    masterAlert,
+    famousMatches,
+    forecast,
+  };
 }
  
 export function getCosmicTwinsForSoul(soul: SoulVitals, limit = 10): Array<{ name: string; born: string; score: number; sharedTrait: string; tags: string[] }> {
