@@ -1,41 +1,28 @@
-// Bumped again: this version adds detection for same-origin impostor pages
-// (e.g. Replit's cold-workspace placeholder) during navigation, on top of
-// the earlier silent-precache-failure fix.
-const CACHE_NAME = "mystique-compass-v22-public-rebuild";
+// Updated service worker with new cache version to force reload
+const CACHE_NAME = "mystique-compass-v23-fix";
 const RUNTIME_CACHE = `${CACHE_NAME}-runtime`;
 
-// Every file the manifest/index.html actually reference, so the offline
-// shell and install icons are guaranteed available from the very first
-// visit — not just lazily runtime-cached the first time something happens
-// to request them.
+// Files to precache
 const PRECACHE_URLS = [
   "/",
+  "/index.html",
   "/manifest.json",
   "/icon-192.svg",
   "/icon-512.svg",
   "/icon-192.png",
   "/icon-512.png",
   "/favicon.svg",
+  "/robots.txt",
 ];
 
-const ASSET_RE =
-  /\/(assets\/|icon-|favicon|manifest\.json|robots\.txt|opengraph\.jpg|background-results\.jpg)/;
+// Cache asset patterns
+const ASSET_RE = /\/(assets\/|icon-|favicon|manifest\.json|robots\.txt|opengraph\.jpg|background-results\.jpg)/;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
       .then((cache) =>
-        // IMPORTANT: cache.addAll() is atomic -- if ANY single URL in the list
-        // fails (404, transient network hiccup during install, etc.), the
-        // ENTIRE call rejects and NOTHING gets stored, not even the URLs that
-        // succeeded. A previous version of this file swallowed that rejection
-        // silently (`.catch(() => {})` right after addAll), which meant the
-        // whole offline shell could end up completely uncached with zero
-        // visible error -- exactly the "used to work offline, now doesn't"
-        // failure mode. Caching each URL independently means one bad/slow
-        // entry can never take down the rest, and failures are at least
-        // logged so they're debuggable next time.
         Promise.all(
           PRECACHE_URLS.map((url) =>
             cache.add(url).catch((err) => {
@@ -50,106 +37,58 @@ self.addEventListener("install", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((names) =>
-        Promise.all(
-          names
-            .filter((name) => ![CACHE_NAME, RUNTIME_CACHE].includes(name))
-            .map((name) => caches.delete(name)),
-        ),
-      )
-      .then(() => self.clients.claim()),
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name.startsWith("mystique-compass-") && name !== CACHE_NAME)
+          .map((name) => caches.delete(name)),
+      );
+    }).then(() => self.clients.claim()),
   );
 });
 
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
-  const response = await fetch(request);
-  if (response.ok) {
-    const cache = await caches.open(RUNTIME_CACHE);
-    cache.put(request, response.clone()).catch(() => {});
-  }
-  return response;
-}
-
-// Replit (and similar dev-preview hosts) can serve their own "workspace is
-// asleep" placeholder page from the exact same origin as the app, with a
-// normal 200 status — there's no network error for fetch() to catch, so a
-// plain networkFirst would happily accept and display that placeholder
-// instead of the real app. This checks the response body for a marker that
-// only the real index.html contains (see the <meta name="mystique-app-shell">
-// tag) before trusting a navigation response as genuine.
-async function isRealAppShell(response) {
-  try {
-    const text = await response.clone().text();
-    return text.includes('name="mystique-app-shell"');
-  } catch {
-    return false;
-  }
-}
-
-async function networkFirst(request, { verifyAppShell = false } = {}) {
-  const isNavigation = request.mode === "navigate";
-  try {
-    const response = await fetch(request);
-    if (isNavigation && verifyAppShell && response.ok && !(await isRealAppShell(response))) {
-      // Got a "successful" response that isn't actually our app (e.g. a
-      // cold-workspace placeholder) — prefer the real cached shell instead,
-      // if one exists from a previous successful visit.
-      const shell = await caches.match("/");
-      if (shell) return shell;
-      // No cached shell yet (very first-ever visit during a cold period) —
-      // nothing better to show than what the network gave us.
-      return response;
-    }
-    if (response.ok) {
-      const cache = await caches.open(RUNTIME_CACHE);
-      cache.put(request, response.clone()).catch(() => {});
-    }
-    return response;
-  } catch {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    if (isNavigation && verifyAppShell) {
-      const shell = await caches.match("/");
-      if (shell) return shell;
-    }
-    return new Response(JSON.stringify({ error: "offline" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-}
-
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-  if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/")) {
+
+  // Skip non-GET requests
+  if (request.method !== "GET") return;
+
+  // Skip chrome-extension and other non-http(s) requests
+  if (!url.protocol.startsWith("http")) return;
+
+  // For same-origin navigation requests, try network first
+  if (url.origin === self.location.origin && request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(
-        () =>
-          new Response(JSON.stringify({ error: "offline" }), {
-            status: 503,
-            headers: { "Content-Type": "application/json" },
-          }),
-      ),
+      fetch(request)
+        .then((response) => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          return response;
+        })
+        .catch(() => caches.match(request)),
     );
     return;
   }
-  if (request.mode === "navigate") {
-    // `/stats/` is a separate static admin dashboard, not a React app shell.
-    // Do not reject it merely because it lacks the app-shell marker.
-    const verifyAppShell = !(url.pathname === "/stats" || url.pathname.startsWith("/stats/"));
-    event.respondWith(networkFirst(request, { verifyAppShell }));
-    return;
-  }
+
+  // For assets, use stale-while-revalidate
   if (ASSET_RE.test(url.pathname)) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(
+      caches.open(RUNTIME_CACHE).then((cache) => {
+        return cache.match(request).then((cachedResponse) => {
+          const fetchPromise = fetch(request).then((networkResponse) => {
+            cache.put(request, networkResponse.clone());
+            return networkResponse;
+          });
+          return cachedResponse || fetchPromise;
+        });
+      }),
+    );
     return;
   }
-  event.respondWith(networkFirst(request));
+
+  // Default: network first
+  event.respondWith(
+    fetch(request).catch(() => caches.match(request)),
+  );
 });
