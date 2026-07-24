@@ -2010,15 +2010,6 @@ export function ResultsDisplay({
             birthYear={numerology.birthYear || new Date().getFullYear() - 30}
           />
           {/* ── Soul Resonance (permanent, above all tabs) ── */}
-          {history.length >= 1 && (
-            <CollapsibleSection
-              title="Soul Weather"
-              subtitle="Current personal-year climate for saved souls"
-              icon={<Star size={16} />}
-            >
-              <SoulWeatherDashboard history={history} onLoad={() => {}} />
-            </CollapsibleSection>
-          )}
           {history.length >= 2 && (
             <CollapsibleSection
               title="Soul Resonance"
@@ -2118,6 +2109,16 @@ export function ResultsDisplay({
               )}
             </motion.div>
           </AnimatePresence>
+          {/* ── Soul Weather (permanent, below all tabs) ── */}
+          {history.length >= 1 && (
+            <CollapsibleSection
+              title="Soul Weather"
+              subtitle="Current personal-year climate for saved souls"
+              icon={<Star size={16} />}
+            >
+              <SoulWeatherDashboard history={history} onLoad={() => {}} />
+            </CollapsibleSection>
+          )}
         </div>
         <footer className="text-center p-4 pb-24 text-white/50 text-[0.65rem] whitespace-pre-line font-body italic leading-relaxed">
           {
