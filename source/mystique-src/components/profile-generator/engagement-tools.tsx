@@ -1929,6 +1929,8 @@ export function SoulResonancePanel({ history }: { history: StoredSoul[] }) {
           </optgroup>
         </select>
       </div>
+      <JohariCompatibilitySection report={resonance} />
+      <CombinedWeatherCard report={resonance} />
       <div
         style={{
           padding: "0.9rem",
@@ -2242,13 +2244,19 @@ function JohariPairCard({
 }) {
   if (!compat) return null;
   const color = barColor(compat.rating * 10);
+  const fullText = `${compat.nature} Advice: ${compat.advice}`;
+  const sentences = React.useMemo(() => {
+    const matches = fullText.match(/[^.!?\n]+[.!?\n]+/g);
+    return matches || [fullText];
+  }, [fullText]);
+  const [, setActiveSentenceIndex] = React.useState(-1);
   return (
     <div
       style={{
-        padding: "0.72rem",
+        padding: "0.72rem 0.78rem",
         borderRadius: 14,
-        background: "rgba(255,255,255,0.035)",
-        border: "1px solid rgba(255,255,255,0.07)",
+        border: "1px solid rgba(212,175,55,0.22)",
+        background: "rgba(212,175,55,0.06)",
         marginBottom: "0.62rem",
       }}
     >
@@ -2256,59 +2264,76 @@ function JohariPairCard({
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
-          gap: "0.6rem",
-          marginBottom: "0.45rem",
+          alignItems: "flex-start",
+          gap: "0.5rem",
+          marginBottom: "0.35rem",
         }}
       >
-        <div
-          style={{
-            fontFamily: "'Cinzel',serif",
-            fontSize: "0.62rem",
-            color: "#d4af37",
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-          }}
-        >
-          {label}
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontFamily: "'Cinzel',serif",
+              fontSize: "0.58rem",
+              color: "#d4af37",
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              fontWeight: 800,
+              paddingTop: "0.15rem",
+            }}
+          >
+            {label}
+          </div>
+          {explanation && (
+            <div
+              style={{
+                fontSize: "0.62rem",
+                color: "rgba(200,180,240,0.48)",
+                marginTop: 2,
+              }}
+            >
+              {explanation}
+            </div>
+          )}
         </div>
-        <div
-          style={{
-            fontFamily: "'Cinzel',serif",
-            fontSize: "1rem",
-            fontWeight: 800,
-            color,
-          }}
-        >
-          {compat.rating}/10
+        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexShrink: 0 }}>
+          <div
+            style={{
+              fontFamily: "'Cinzel',serif",
+              fontSize: "1rem",
+              fontWeight: 800,
+              color,
+            }}
+          >
+            {compat.rating}/10
+          </div>
+          <SpeechPlayer
+            text={fullText}
+            sentences={sentences}
+            onBoundary={setActiveSentenceIndex}
+            onEnd={() => setActiveSentenceIndex(-1)}
+          />
         </div>
       </div>
-      {explanation && (
+      <div
+        style={{
+          color: "rgba(231,221,255,0.82)",
+          fontSize: "0.76rem",
+          lineHeight: 1.65,
+        }}
+      >
+        <p style={{ margin: "0 0 0.38rem" }}>{compat.nature}</p>
         <p
           style={{
-            fontSize: "0.64rem",
-            color: "rgba(200,180,240,0.52)",
-            margin: "0 0 0.42rem",
+            fontSize: "0.68rem",
+            color: "rgba(200,180,240,0.65)",
+            fontStyle: "italic",
+            margin: 0,
             lineHeight: 1.5,
           }}
         >
-          {explanation}
+          Advice: {compat.advice}
         </p>
-      )}
-      <p style={{ fontSize: "0.73rem", color: "rgba(231,221,255,0.82)", lineHeight: 1.6, margin: "0 0 0.38rem" }}>
-        {compat.nature}
-      </p>
-      <p
-        style={{
-          fontSize: "0.68rem",
-          color: "rgba(200,180,240,0.65)",
-          fontStyle: "italic",
-          margin: 0,
-          lineHeight: 1.5,
-        }}
-      >
-        Advice: {compat.advice}
-      </p>
+      </div>
     </div>
   );
 }
@@ -2323,21 +2348,20 @@ function JohariCompatibilitySection({ report }: { report: SoulResonanceReport })
     v === "Friendly" ? "#86efac" : v === "Enemy" ? "#fb7185" : "#c4b5fd";
 
   return (
-    <details style={{ marginBottom: "0.9rem" }}>
-      <summary
+    <div style={{ marginBottom: "0.9rem" }}>
+      <div
         style={{
-          cursor: "pointer",
-          color: "#d4af37",
           fontFamily: "'Cinzel',serif",
           fontSize: "0.62rem",
-          letterSpacing: "0.1em",
+          letterSpacing: "0.12em",
           textTransform: "uppercase",
+          color: "#d4af37",
           marginBottom: "0.55rem",
         }}
       >
         Johari Compatibility (Harish Johari)
-      </summary>
-      <div style={{ marginTop: "0.7rem" }}>
+      </div>
+      <div>
         {/* Profile pills */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "0.7rem" }}>
           {[
@@ -2491,7 +2515,7 @@ function JohariCompatibilitySection({ report }: { report: SoulResonanceReport })
           explanation={`How ${bName}'s personality meets ${aName}'s life purpose.`}
         />
       </div>
-    </details>
+    </div>
   );
 }
 
@@ -2672,8 +2696,6 @@ function ExtendedResonanceLayers({ report }: { report: SoulResonanceReport }) {
         title="Alexandrov Psychomatrix Comparison"
         text={[psycho.willpower, psycho.energy, psycho.stability, psycho.purpose, psycho.family, psycho.habits].join(" ")}
       />
-      <JohariCompatibilitySection report={report} />
-      <CombinedWeatherCard report={report} />
       {report.famousTwins.length > 0 && (
         <StoryCard
           title="Cosmic Twins"
