@@ -1865,6 +1865,14 @@ export function SoulResonancePanel({ history }: { history: StoredSoul[] }) {
   const a = options.find((s) => getId(s) === aId) || history[0] || famousBank[0];
   const b = options.find((s) => getId(s) === bId) || options.find((s) => getId(s) !== getId(a));
   if (!a || !b || getId(a) === getId(b)) return null;
+  // Not memoized: `a`/`b` are only resolved after the early-return checks
+  // above, so a hook here would violate the Rules of Hooks. The underlying
+  // computation is cheap arithmetic plus a filter over the famous-birthdays
+  // list, so recomputing on each render of this panel is fine.
+  const va = buildSoulVitals(a);
+  const vb = buildSoulVitals(b);
+  const resonance: SoulResonanceReport = generateSoulResonance(va, vb);
+  resonance.famousTwins = getFamousTwins(va, vb);
   return (
     <Panel
       title="Soul Resonance"
@@ -1920,8 +1928,8 @@ export function SoulResonancePanel({ history }: { history: StoredSoul[] }) {
           </optgroup>
         </select>
       </div>
-      <JohariCompatibilitySection a={a} b={b} />
-      <CombinedWeatherCard a={a} b={b} />
+      <JohariCompatibilitySection report={resonance} />
+      <CombinedWeatherCard report={resonance} />
     </Panel>
   );
 }
@@ -2043,160 +2051,424 @@ function ResonanceLayerDetails({ layers }: { layers: ResonanceLayer[] }) {
     </details>
   );
 }
-function JohariCompatibilitySection({ a, b }: { a: StoredSoul; b: StoredSoul }) {
-  const aPsychic = psychic(a);
-  const bPsychic = psychic(b);
-  const aDestiny = lifePath(a);
-  const bDestiny = lifePath(b);
-  const johariPsychic = johariRelation(aPsychic, bPsychic);
-  const johariDestiny = johariRelation(aDestiny, bDestiny);
-  const aPlanet = JOHARI_RELATIONS[aPsychic]?.planet || "Unknown";
-  const bPlanet = JOHARI_RELATIONS[bPsychic]?.planet || "Unknown";
-  const aDestPlanet = JOHARI_RELATIONS[aDestiny]?.planet || "Unknown";
-  const bDestPlanet = JOHARI_RELATIONS[bDestiny]?.planet || "Unknown";
+function JohariPairCard({
+  label,
+  compat,
+  explanation,
+}: {
+  label: string;
+  compat: { rating: number; nature: string; advice: string } | null;
+  explanation?: string;
+}) {
+  if (!compat) return null;
+  const color = barColor(compat.rating * 10);
+  const fullText = `${compat.nature} Advice: ${compat.advice}`;
+  const sentences = React.useMemo(() => {
+    const matches = fullText.match(/[^.!?\n]+[.!?\n]+/g);
+    return matches || [fullText];
+  }, [fullText]);
+  const [, setActiveSentenceIndex] = React.useState(-1);
   return (
     <div
       style={{
-        padding: "0.85rem",
+        padding: "0.72rem 0.78rem",
         borderRadius: 14,
-        background: "rgba(139,92,246,0.08)",
-        border: "1px solid rgba(139,92,246,0.22)",
-        marginBottom: "0.75rem",
+        border: "1px solid rgba(212,175,55,0.22)",
+        background: "rgba(212,175,55,0.06)",
+        marginBottom: "0.62rem",
       }}
     >
       <div
         style={{
-          fontFamily: "'Cinzel',serif",
-          fontSize: "0.65rem",
-          color: "#a78bfa",
-          letterSpacing: "0.12em",
-          textTransform: "uppercase",
-          marginBottom: "0.65rem",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: "0.5rem",
+          marginBottom: "0.35rem",
         }}
       >
-        Johari Compatibility Analysis
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
-        <div>
-          <div style={{ fontSize: "0.58rem", color: "rgba(200,180,240,0.5)", marginBottom: 4 }}>
-            Psychic Numbers
+        <div style={{ flex: 1 }}>
+          <div
+            style={{
+              fontFamily: "'Cinzel',serif",
+              fontSize: "0.58rem",
+              color: "#d4af37",
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              fontWeight: 800,
+              paddingTop: "0.15rem",
+            }}
+          >
+            {label}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: 6 }}>
-            <span style={{ color: "#f1d98a", fontFamily: "'Cinzel',serif", fontSize: "0.8rem", fontWeight: 700 }}>
-              {aPsychic} × {bPsychic}
-            </span>
-            <span style={{ fontSize: "0.6rem", color: barColor(johariPsychic.score), background: `${barColor(johariPsychic.score)}20`, padding: "1px 6px", borderRadius: 8 }}>
-              {johariPsychic.score}%
-            </span>
-          </div>
-          <div style={{ fontSize: "0.62rem", color: "rgba(200,180,240,0.6)" }}>
-            {aPlanet} & {bPlanet}
-          </div>
-          <div style={{ fontSize: "0.58rem", color: "rgba(200,180,240,0.4)", marginTop: 4, fontStyle: "italic" }}>
-            {johariPsychic.label}
-          </div>
+          {explanation && (
+            <div
+              style={{
+                fontSize: "0.62rem",
+                color: "rgba(200,180,240,0.48)",
+                marginTop: 2,
+              }}
+            >
+              {explanation}
+            </div>
+          )}
         </div>
-        <div>
-          <div style={{ fontSize: "0.58rem", color: "rgba(200,180,240,0.5)", marginBottom: 4 }}>
-            Destiny Numbers
+        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexShrink: 0 }}>
+          <div
+            style={{
+              fontFamily: "'Cinzel',serif",
+              fontSize: "1rem",
+              fontWeight: 800,
+              color,
+            }}
+          >
+            {compat.rating}/10
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: 6 }}>
-            <span style={{ color: "#f1d98a", fontFamily: "'Cinzel',serif", fontSize: "0.8rem", fontWeight: 700 }}>
-              {aDestiny} × {bDestiny}
-            </span>
-            <span style={{ fontSize: "0.6rem", color: barColor(johariDestiny.score), background: `${barColor(johariDestiny.score)}20`, padding: "1px 6px", borderRadius: 8 }}>
-              {johariDestiny.score}%
-            </span>
-          </div>
-          <div style={{ fontSize: "0.62rem", color: "rgba(200,180,240,0.6)" }}>
-            {aDestPlanet} & {bDestPlanet}
-          </div>
-          <div style={{ fontSize: "0.58rem", color: "rgba(200,180,240,0.4)", marginTop: 4, fontStyle: "italic" }}>
-            {johariDestiny.label}
-          </div>
+          <SpeechPlayer
+            text={fullText}
+            sentences={sentences}
+            onBoundary={setActiveSentenceIndex}
+            onEnd={() => setActiveSentenceIndex(-1)}
+          />
         </div>
       </div>
-      <div style={{ marginTop: "0.6rem", paddingTop: "0.6rem", borderTop: "1px solid rgba(139,92,246,0.15)" }}>
-        <p style={{ fontSize: "0.68rem", color: "rgba(231,221,255,0.75)", lineHeight: 1.55, margin: 0 }}>
-          <b style={{ color: "#a78bfa" }}>Johari Insight:</b> {johariPsychic.note} {johariDestiny.note}
+      <div
+        style={{
+          color: "rgba(231,221,255,0.82)",
+          fontSize: "0.76rem",
+          lineHeight: 1.65,
+        }}
+      >
+        <p style={{ margin: "0 0 0.38rem" }}>{compat.nature}</p>
+        <p
+          style={{
+            fontSize: "0.68rem",
+            color: "rgba(200,180,240,0.65)",
+            fontStyle: "italic",
+            margin: 0,
+            lineHeight: 1.5,
+          }}
+        >
+          Advice: {compat.advice}
         </p>
       </div>
     </div>
   );
 }
 
-// ── Combined Weather Card ────────────────────────────────────────────────────────
-function CombinedWeatherCard({ a, b }: { a: StoredSoul; b: StoredSoul }) {
-  const year = new Date().getFullYear();
-  const aPY = computePersonalYearNumber(a.day, a.month, year);
-  const bPY = computePersonalYearNumber(b.day, b.month, year);
-  const aNextPY = computePersonalYearNumber(a.day, a.month, year + 1);
-  const bNextPY = computePersonalYearNumber(b.day, b.month, year + 1);
-  const aToday = generateDailyForecast(a.day, a.month, a.year);
-  const bToday = generateDailyForecast(b.day, b.month, b.year);
-  const aSeason = relationshipSeason(aPY);
-  const bSeason = relationshipSeason(bPY);
-  const seasonsMatch = aSeason === bSeason;
+function JohariCompatibilitySection({ report }: { report: SoulResonanceReport }) {
+  const jc = report.johariCompatibility;
+  if (!jc) return null;
+
+  const aName = report.soulA.name;
+  const bName = report.soulB.name;
+  const viewColor = (v: string) =>
+    v === "Friendly" ? "#86efac" : v === "Enemy" ? "#fb7185" : "#c4b5fd";
+
+  return (
+    <div style={{ marginBottom: "0.9rem" }}>
+      <div
+        style={{
+          fontFamily: "'Cinzel',serif",
+          fontSize: "0.62rem",
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          color: "#d4af37",
+          marginBottom: "0.55rem",
+        }}
+      >
+        Johari Compatibility (Harish Johari)
+      </div>
+      <div>
+        {/* Profile pills */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "0.7rem" }}>
+          {[
+            { name: aName, profile: jc.profileA },
+            { name: bName, profile: jc.profileB },
+          ].map(({ name, profile }) => (
+            <div
+              key={name}
+              style={{
+                padding: "0.65rem",
+                borderRadius: 13,
+                background: "rgba(255,255,255,0.035)",
+                border: "1px solid rgba(212,175,55,0.16)",
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: "'Cinzel',serif",
+                  fontSize: "0.64rem",
+                  color: "#f1d98a",
+                  marginBottom: "0.35rem",
+                }}
+              >
+                {name} · {profile.planet}
+              </div>
+              <div
+                style={{
+                  fontSize: "0.64rem",
+                  color: "rgba(200,180,240,0.55)",
+                  marginBottom: "0.4rem",
+                }}
+              >
+                {profile.element} · Best days: {profile.bestDays.join(", ")}
+              </div>
+              <p
+                style={{
+                  fontSize: "0.68rem",
+                  color: "rgba(231,221,255,0.78)",
+                  lineHeight: 1.55,
+                  margin: "0 0 0.38rem",
+                }}
+              >
+                {profile.nature}
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "0.28rem",
+                  marginTop: "0.4rem",
+                }}
+              >
+                {profile.strengths.slice(0, 4).map((s) => (
+                  <span
+                    key={s}
+                    style={{
+                      fontSize: "0.55rem",
+                      padding: "0.18rem 0.45rem",
+                      borderRadius: 99,
+                      background: "rgba(134,239,172,0.12)",
+                      color: "#86efac",
+                      border: "1px solid rgba(134,239,172,0.22)",
+                    }}
+                  >
+                    {s}
+                  </span>
+                ))}
+                {profile.weaknesses.slice(0, 3).map((w) => (
+                  <span
+                    key={w}
+                    style={{
+                      fontSize: "0.55rem",
+                      padding: "0.18rem 0.45rem",
+                      borderRadius: 99,
+                      background: "rgba(251,113,133,0.1)",
+                      color: "#fb7185",
+                      border: "1px solid rgba(251,113,133,0.2)",
+                    }}
+                  >
+                    {w}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Friend/enemy view */}
+        <div
+          style={{
+            padding: "0.62rem 0.7rem",
+            borderRadius: 13,
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.07)",
+            marginBottom: "0.62rem",
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "'Cinzel',serif",
+              fontSize: "0.58rem",
+              color: "#d4af37",
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              marginBottom: "0.42rem",
+            }}
+          >
+            Friend / Enemy View
+          </div>
+          <p style={{ margin: "0.18rem 0", fontSize: "0.71rem", color: "rgba(231,221,255,0.8)" }}>
+            {aName} sees {bName}:{" "}
+            <b style={{ color: viewColor(jc.aViewOfB) }}>{jc.aViewOfB}</b>
+          </p>
+          <p style={{ margin: "0.18rem 0", fontSize: "0.71rem", color: "rgba(231,221,255,0.8)" }}>
+            {bName} sees {aName}:{" "}
+            <b style={{ color: viewColor(jc.bViewOfA) }}>{jc.bViewOfA}</b>
+          </p>
+          {jc.aViewOfB !== jc.bViewOfA && (
+            <p
+              style={{
+                margin: "0.4rem 0 0",
+                fontSize: "0.65rem",
+                color: "rgba(200,180,240,0.55)",
+                fontStyle: "italic",
+              }}
+            >
+              Asymmetric perception — one sees friendship while the other feels tension. Worth naming openly.
+            </p>
+          )}
+        </div>
+
+        {/* Pair readings */}
+        <JohariPairCard
+          label={`Psychic ↔ Psychic  (${aName} ${report.soulA.psychic} · ${bName} ${report.soulB.psychic})`}
+          compat={jc.psychicPair}
+          explanation="The most immediately felt layer — how you interact day-to-day and instinctively."
+        />
+        <JohariPairCard
+          label={`Destiny ↔ Destiny  (${aName} ${report.soulA.destiny} · ${bName} ${report.soulB.destiny})`}
+          compat={jc.destinyPair}
+          explanation="The karmic, long-range compatibility — the deeper spiritual purpose of the bond."
+        />
+        <JohariPairCard
+          label={`${aName}'s Psychic ${report.soulA.psychic} ↔ ${bName}'s Destiny ${report.soulB.destiny}`}
+          compat={jc.crossPairAB}
+          explanation={`How ${aName}'s personality meets ${bName}'s life purpose.`}
+        />
+        <JohariPairCard
+          label={`${bName}'s Psychic ${report.soulB.psychic} ↔ ${aName}'s Destiny ${report.soulA.destiny}`}
+          compat={jc.crossPairBA}
+          explanation={`How ${bName}'s personality meets ${aName}'s life purpose.`}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CombinedWeatherCard({ report }: { report: SoulResonanceReport }) {
+  const cw = report.combinedWeather;
+  if (!cw) return null;
+  const syncColor =
+    cw.cycleDifference === 0
+      ? "#f1d98a"
+      : cw.cycleDifference <= 2
+        ? "#86efac"
+        : cw.cycleDifference <= 4
+          ? "#67e8f9"
+          : "#fb7185";
   return (
     <div
       style={{
-        padding: "0.85rem",
+        padding: "0.82rem",
         borderRadius: 14,
-        background: "rgba(103,232,249,0.05)",
-        border: "1px solid rgba(103,232,249,0.18)",
-        marginBottom: "0.75rem",
+        background: "linear-gradient(135deg, rgba(212,175,55,0.08), rgba(15,52,96,0.22))",
+        border: "1px solid rgba(212,175,55,0.18)",
+        marginBottom: "0.7rem",
       }}
     >
       <div
         style={{
-          fontFamily: "'Cinzel',serif",
-          fontSize: "0.65rem",
-          color: "#67e8f9",
-          letterSpacing: "0.12em",
-          textTransform: "uppercase",
-          marginBottom: "0.65rem",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "0.6rem",
+          marginBottom: "0.55rem",
         }}
       >
-        Combined Weather
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem", marginBottom: "0.65rem" }}>
-        <div style={{ padding: "0.55rem", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <div style={{ fontSize: "0.58rem", color: "rgba(200,180,240,0.5)", marginBottom: 4 }}>{a.name}</div>
-          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-            <span style={{ fontSize: "0.65rem", color: "#f1d98a", fontFamily: "'Cinzel',serif" }}>PY {aPY}</span>
-            <span style={{ fontSize: "0.55rem", color: barColor(aPY * 10), background: `${barColor(aPY * 10)}20`, padding: "1px 5px", borderRadius: 6, textTransform: "capitalize" }}>{aSeason}</span>
-          </div>
-          <div style={{ fontSize: "0.55rem", color: "rgba(200,180,240,0.5)", marginTop: 4 }}>PD {aToday.personalDay}</div>
+        <div
+          style={{
+            fontFamily: "'Cinzel',serif",
+            fontSize: "0.62rem",
+            color: "#d4af37",
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+          }}
+        >
+          Combined Soul Weather
         </div>
-        <div style={{ padding: "0.55rem", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <div style={{ fontSize: "0.58rem", color: "rgba(200,180,240,0.5)", marginBottom: 4 }}>{b.name}</div>
-          <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-            <span style={{ fontSize: "0.65rem", color: "#f1d98a", fontFamily: "'Cinzel',serif" }}>PY {bPY}</span>
-            <span style={{ fontSize: "0.55rem", color: barColor(bPY * 10), background: `${barColor(bPY * 10)}20`, padding: "1px 5px", borderRadius: 6, textTransform: "capitalize" }}>{bSeason}</span>
-          </div>
-          <div style={{ fontSize: "0.55rem", color: "rgba(200,180,240,0.5)", marginTop: 4 }}>PD {bToday.personalDay}</div>
+        <div
+          style={{
+            fontFamily: "'Cinzel',serif",
+            fontSize: "0.72rem",
+            fontWeight: 800,
+            color: syncColor,
+          }}
+        >
+          {cw.synchronicity}
         </div>
       </div>
       <div
         style={{
-          padding: "0.5rem 0.6rem",
-          borderRadius: 10,
-          background: seasonsMatch ? "rgba(52,211,153,0.1)" : "rgba(251,191,36,0.08)",
-          border: `1px solid ${seasonsMatch ? "rgba(52,211,153,0.25)" : "rgba(251,191,36,0.22)"}`,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: "0.55rem",
+          marginBottom: "0.62rem",
         }}
       >
-        <div style={{ fontSize: "0.58rem", color: seasonsMatch ? "#34d399" : "#fbbf24", fontFamily: "'Cinzel',serif", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3 }}>
-          {seasonsMatch ? "✓ Seasonal Alignment" : "⚡ Different Seasons"}
+        <div
+          style={{
+            padding: "0.52rem 0.6rem",
+            borderRadius: 10,
+            background: "rgba(244,63,94,0.07)",
+            border: "1px solid rgba(244,63,94,0.15)",
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "'Cinzel',serif",
+              fontSize: "0.54rem",
+              color: "#fb7185",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              marginBottom: "0.28rem",
+            }}
+          >
+            Challenges
+          </div>
+          <p style={{ fontSize: "0.69rem", color: "rgba(231,221,255,0.78)", lineHeight: 1.55, margin: 0 }}>
+            {cw.challenges}
+          </p>
         </div>
-        <div style={{ fontSize: "0.62rem", color: "rgba(231,221,255,0.72)", lineHeight: 1.5 }}>
-          {seasonsMatch
-            ? `Both are in ${aSeason} season — life is asking similar things from each person.`
-            : `${a.name} is in ${aSeason} while ${b.name} is in ${bSeason}. Different speeds and priorities may require conscious adjustment.`
-          }
+        <div
+          style={{
+            padding: "0.52rem 0.6rem",
+            borderRadius: 10,
+            background: "rgba(134,239,172,0.07)",
+            border: "1px solid rgba(134,239,172,0.15)",
+          }}
+        >
+          <div
+            style={{
+              fontFamily: "'Cinzel',serif",
+              fontSize: "0.54rem",
+              color: "#86efac",
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              marginBottom: "0.28rem",
+            }}
+          >
+            Opportunities
+          </div>
+          <p style={{ fontSize: "0.69rem", color: "rgba(231,221,255,0.78)", lineHeight: 1.55, margin: 0 }}>
+            {cw.opportunities}
+          </p>
         </div>
       </div>
-      <div style={{ marginTop: "0.6rem", fontSize: "0.55rem", color: "rgba(200,180,240,0.4)", textAlign: "center" }}>
-        Next Year: {a.name} PY {aNextPY} · {b.name} PY {bNextPY}
+      <p
+        style={{
+          fontSize: "0.72rem",
+          color: "rgba(231,221,255,0.84)",
+          lineHeight: 1.6,
+          margin: 0,
+          fontStyle: "italic",
+        }}
+      >
+        {cw.specificInsight}
+      </p>
+      <div
+        style={{
+          marginTop: "0.5rem",
+          display: "flex",
+          gap: "0.7rem",
+          fontSize: "0.6rem",
+          color: "rgba(200,180,240,0.45)",
+        }}
+      >
+        <span>PY {cw.person1Year} · PY {cw.person2Year}</span>
+        <span>Δ {cw.cycleDifference}</span>
+        <span>Combined {cw.combinedEnergy}</span>
       </div>
     </div>
   );
