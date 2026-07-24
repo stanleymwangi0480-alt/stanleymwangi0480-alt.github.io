@@ -541,27 +541,36 @@ export function analyzePYInteraction(a: SoulVitals, b: SoulVitals, targetYear = 
 // ---------------------------------------------------------------------
 // ── Suzanne White compat codification ────────────────────────────────────
 //
-// Two-phase sentence-level analysis:
+// Three-phase sentence-level analysis:
 //   Phase 1 — POSITIVE OVERRIDE: if a sentence contains an unmistakable
 //     recommendation phrase ("can't go wrong with", "particularly happy",
 //     "best bet", etc.) it is classified as appreciation regardless of
 //     any negation words that also appear in it.
 //   Phase 2 — CLEAR AVOIDANCE: if a sentence does NOT have a positive
 //     override but DOES contain an unmistakable caution/avoidance phrase
-//     ("Don't pick a", "Stay away from", "Avoid", etc.) it is classified
-//     as dissatisfaction.
-//   Sentences matching neither phase are neutral (ignored).
+//     — either an imperative command ("Don't pick", "Stay away from",
+//     "Avoid", "Steer clear") or a descriptive disdain characterization
+//     ("too cool to keep you fascinated", "exasperate you", "unnerve",
+//     "annoy you", "frustrate you", "you hate", "polarized outlooks",
+//     "disappointments aplenty", etc.) — it is classified as dissatisfaction.
+//   Phase 3 — NEUTRAL: sentences matching neither phase are classified as
+//     mild appreciation (the sign was mentioned without explicit caution).
 //
 // This avoids the two previous bugs:
 //   1. Curly apostrophe mismatch — U+2019 (`'`) vs U+0027 (`'`)
 //   2. Misclassifying "can't go wrong with X" as avoidance because
 //      `can't` was blindly flagged as a negative keyword.
+//   3. Missing descriptive disdain ("Rabbits are too cool to keep you
+//      fascinated forever") because only imperative-verb patterns were
+//      checked for avoidance.
 
 // Phase 1 — unmistakably POSITIVE phrases (override any negation words)
 const POSITIVE_OVERRIDE_PATTERN = /can\u2019t go wrong|can't go wrong|won\u2019t be disappointed|won't be disappointed|won\u2019t regret|won't regret|won\u2019t have any trouble|won't have any trouble|particularly happy|you\u2019ll find a good|you'll find a good|best bet|ideal match|great couple|perfect mate|blissfully|harmonious|recommended match|advised to seek|i see you with|you get on with|good match|fine mate|happy alliance|harmony incarnate|sound love|durable|solid relationship|enduring love|great passion|not to be excluded|can\u2019t resist|can't resist|you\u2019ll be particularly|you'll be particularly|won\u2019t have any trouble cohabiting|won't have any trouble cohabiting|excellent|will be happy/gi;
 
-// Phase 2 — unmistakably NEGATIVE phrases (only checked if Phase 1 failed)
-const CLEAR_AVOID_PATTERN = /stay away|avoid|shun|give wide berth|flee|poison|disastrous|don\u2019t pick|don't pick|don\u2019t marry|don't marry|don\u2019t go getting|don't go getting|don\u2019t bother with|don't bother with|don\u2019t go getting yourself involved|don't go getting yourself involved|refrain|leave.*alone|leave.*if you can|too.*(?:cool to keep|heady)|unnerve|exasperate|overpower|not to be trusted|beware|watch out for|too like you.*too.*different|worse than.*bark|won\u2019t last|won't last|won\u2019t work|won't work|never work|dissonance|ugly duo|no marriage|not for you|bite is worse/gi;
+// Phase 2 — unmistakably NEGATIVE phrases: imperative commands AND
+// descriptive disdain characterizations. Only checked if Phase 1 failed.
+// Includes both curly (U+2019) and straight (U+0027) apostrophe variants.
+const CLEAR_AVOID_PATTERN = /stay away|avoid|shun|steer clear|give wide berth|flee|poison|disastrous|don\u2019t pick|don't pick|don\u2019t marry|don't marry|don\u2019t go getting|don't go getting|don\u2019t bother with|don't bother with|don\u2019t go getting yourself involved|don't go getting yourself involved|refrain|leave.*alone|leave.*if you can|too like you.*too.*different|worse than.*bark|bite is worse|won\u2019t last|won't last|won\u2019t work|won't work|won\u2019t work for|won't work for|never work|dissonance|ugly duo|no marriage|not for you|not really suited|ill-suited|don\u2019t see eye to eye|don't see eye to eye|polarized outlooks|too cool to keep.*fascinated|exasperate you|unnerve you|unnerve.*the most|annoy you|frustrate you|irritat|you.*hate|they.*hate|hate inertia|disappointments aplenty|disappointment.*await|too.*different.*other|not much love|boredom|stodgy|gloomy|killjoy|beware|watch out for/gi;
 
 function codifySuzanneWhite(
   sourceText: string,
