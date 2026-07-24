@@ -1852,6 +1852,225 @@ function EvidenceList({ evidence }: { evidence: ResonanceEvidence[] }) {
     </details>
   );
 }
+// ── Searchable Soul Selector ────────────────────────────────────────────
+// Replaces the plain <select> dropdowns in Soul Resonance with a combo
+// box that has a search input for filtering, then a scrollable list.
+function SoulSearchSelect({
+  label,
+  options,
+  history,
+  famousBank,
+  selectedId,
+  onSelect,
+  getId,
+}: {
+  label: string;
+  options: Array<StoredSoul | FamousSoulVitals>;
+  history: StoredSoul[];
+  famousBank: FamousSoulVitals[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  getId: (s: StoredSoul | FamousSoulVitals) => string;
+}) {
+  const [search, setSearch] = React.useState("");
+  const [isOpen, setIsOpen] = React.useState(false);
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+
+  const selected = options.find((s) => getId(s) === selectedId);
+
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Filtered lists
+  const lowerSearch = search.toLowerCase();
+  const filteredHistory = history.filter(
+    (s) => s.name.toLowerCase().includes(lowerSearch) ||
+      `${s.day}/${s.month}/${s.year}`.includes(lowerSearch),
+  );
+  const filteredFamous = famousBank.filter(
+    (s) => s.name.toLowerCase().includes(lowerSearch) ||
+      `${s.day}/${s.month}/${s.year}`.includes(lowerSearch),
+  );
+  const totalFiltered = filteredHistory.length + filteredFamous.length;
+
+  const handleSelect = (id: string) => {
+    onSelect(id);
+    setIsOpen(false);
+    setSearch("");
+  };
+
+  return (
+    <div ref={wrapperRef} style={{ position: "relative" }}>
+      {/* Current selection display + toggle button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          width: "100%",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          background: "rgba(10,4,28,0.96)",
+          color: "#e9ddff",
+          border: "1px solid rgba(167,139,250,0.22)",
+          borderRadius: 12,
+          padding: "0.65rem",
+          fontSize: "0.76rem",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "85%" }}>
+          {selected ? selected.name : "Choose…"}
+        </span>
+        <span style={{ opacity: 0.5, fontSize: "0.6rem" }}>
+          {isOpen ? "▲" : "▼"}
+        </span>
+      </button>
+
+      {/* Dropdown panel with search + scrollable list */}
+      {isOpen && (
+        <div
+          style={{
+            position: "absolute",
+            top: "100%",
+            left: 0,
+            right: 0,
+            zIndex: 50,
+            marginTop: "0.15rem",
+            background: "rgba(10,4,28,0.98)",
+            border: "1px solid rgba(167,139,250,0.28)",
+            borderRadius: 12,
+            maxHeight: "320px",
+            overflow: "hidden",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+          }}
+        >
+          {/* Search input */}
+          <div style={{ padding: "0.5rem 0.55rem 0.35rem" }}>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Type to search names or dates…"
+              autoFocus
+              style={{
+                width: "100%",
+                padding: "0.55rem 0.65rem",
+                borderRadius: 10,
+                border: "1px solid rgba(167,139,250,0.25)",
+                background: "rgba(4,0,26,0.9)",
+                color: "#e9ddff",
+                fontSize: "0.74rem",
+                outline: "none",
+              }}
+            />
+            <div style={{ fontSize: "0.58rem", color: "rgba(200,180,240,0.45)", marginTop: "0.2rem", textAlign: "right" }}>
+              {totalFiltered} result{totalFiltered !== 1 ? "s" : ""}
+            </div>
+          </div>
+
+          {/* Scrollable list */}
+          <div
+            style={{
+              maxHeight: "240px",
+              overflowY: "auto",
+              padding: "0 0.45rem 0.5rem",
+            }}
+          >
+            {filteredHistory.length > 0 && (
+              <div style={{ fontSize: "0.58rem", color: "#d4af37", fontFamily: "'Cinzel',serif", letterSpacing: "0.1em", textTransform: "uppercase", padding: "0.35rem 0.2rem 0.15rem", marginTop: "0.15rem" }}>
+                Saved Souls
+              </div>
+            )}
+            {filteredHistory.map((s) => {
+              const id = getId(s);
+              const isActive = id === selectedId;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => handleSelect(id)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "0.42rem 0.5rem",
+                    borderRadius: 8,
+                    border: "none",
+                    background: isActive ? "rgba(212,175,55,0.18)" : "transparent",
+                    color: isActive ? "#f1d98a" : "rgba(231,221,255,0.82)",
+                    cursor: "pointer",
+                    fontSize: "0.72rem",
+                    marginBottom: "0.15rem",
+                    transition: "background 0.15s",
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <span style={{ fontWeight: 600 }}>{s.name}</span>
+                  <span style={{ fontSize: "0.58rem", color: "rgba(200,180,240,0.45)", marginLeft: "0.4rem" }}>
+                    {s.day}/{s.month}/{s.year}
+                  </span>
+                </button>
+              );
+            })}
+            {filteredFamous.length > 0 && (
+              <div style={{ fontSize: "0.58rem", color: "#67e8f9", fontFamily: "'Cinzel',serif", letterSpacing: "0.1em", textTransform: "uppercase", padding: "0.35rem 0.2rem 0.15rem", marginTop: filteredHistory.length > 0 ? "0.45rem" : "0.15rem" }}>
+                Famous People Database
+              </div>
+            )}
+            {filteredFamous.map((s) => {
+              const isActive = s.id === selectedId;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => handleSelect(s.id)}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "0.42rem 0.5rem",
+                    borderRadius: 8,
+                    border: "none",
+                    background: isActive ? "rgba(212,175,55,0.18)" : "transparent",
+                    color: isActive ? "#f1d98a" : "rgba(231,221,255,0.82)",
+                    cursor: "pointer",
+                    fontSize: "0.72rem",
+                    marginBottom: "0.15rem",
+                    transition: "background 0.15s",
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <span style={{ fontWeight: 600 }}>{s.name}</span>
+                  <span style={{ fontSize: "0.58rem", color: "rgba(200,180,240,0.45)", marginLeft: "0.4rem" }}>
+                    {s.day}/{s.month}/{s.year}
+                  </span>
+                </button>
+              );
+            })}
+            {totalFiltered === 0 && (
+              <div style={{ textAlign: "center", color: "rgba(200,180,240,0.35)", fontSize: "0.7rem", padding: "1.2rem 0" }}>
+                No matches found
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function SoulResonancePanel({ history }: { history: StoredSoul[] }) {
   const famousBank = React.useMemo(() => getFamousSoulBank(), []);
   const getId = React.useCallback((s: StoredSoul | FamousSoulVitals) => s.id || `${s.name}-${s.day}-${s.month}-${s.year}`, []);
@@ -1888,46 +2107,24 @@ export function SoulResonancePanel({ history }: { history: StoredSoul[] }) {
           marginBottom: "0.85rem",
         }}
       >
-        <select
-          value={aId}
-          onChange={(e) => setAId(e.target.value)}
-          style={selectStyle}
-        >
-          <optgroup label="Saved Souls">
-            {history.map((s) => (
-              <option key={getId(s)} value={getId(s)}>
-                {s.name}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Famous People Database">
-            {famousBank.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </optgroup>
-        </select>
-        <select
-          value={bId}
-          onChange={(e) => setBId(e.target.value)}
-          style={selectStyle}
-        >
-          <optgroup label="Saved Souls">
-            {history.map((s) => (
-              <option key={getId(s)} value={getId(s)}>
-                {s.name}
-              </option>
-            ))}
-          </optgroup>
-          <optgroup label="Famous People Database">
-            {famousBank.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </optgroup>
-        </select>
+        <SoulSearchSelect
+          label="Soul A"
+          options={options}
+          history={history}
+          famousBank={famousBank}
+          selectedId={aId}
+          onSelect={setAId}
+          getId={getId}
+        />
+        <SoulSearchSelect
+          label="Soul B"
+          options={options}
+          history={history}
+          famousBank={famousBank}
+          selectedId={bId}
+          onSelect={setBId}
+          getId={getId}
+        />
       </div>
       <JohariCompatibilitySection report={resonance} />
       <CombinedWeatherCard report={resonance} />
