@@ -34,6 +34,7 @@ import {
   getClassicCompoundForPYN,
 } from "@/lib/numerology/chaldean-pyn-compounds";
 import { NEW_ASTROLOGY_DATA } from "@/lib/new-astrology";
+import { zodiacData } from "@/lib/zodiac";
 import { cheiroPsychicNumbers } from "@/lib/numerology/cheiro-psychic-numbers";
 import {
   buildSoulVitals,
@@ -1930,6 +1931,17 @@ export function SoulResonancePanel({ history }: { history: StoredSoul[] }) {
       </div>
       <JohariCompatibilitySection report={resonance} />
       <CombinedWeatherCard report={resonance} />
+      {resonance.chineseZodiacCompatText && (
+        <ChineseZodiacCompatTextCard
+          aAnimal={resonance.soulA.zodiacAnimal}
+          bAnimal={resonance.soulB.zodiacAnimal}
+          text={resonance.chineseZodiacCompatText}
+          relation={resonance.chineseZodiac.relation}
+        />
+      )}
+      {resonance.newAstrologyCompat && (
+        <NewAstrologyCompatCard report={resonance} />
+      )}
     </Panel>
   );
 }
@@ -2469,6 +2481,263 @@ function CombinedWeatherCard({ report }: { report: SoulResonanceReport }) {
         <span>PY {cw.person1Year} · PY {cw.person2Year}</span>
         <span>Δ {cw.cycleDifference}</span>
         <span>Combined {cw.combinedEnergy}</span>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Chinese Zodiac Compatibility Text Card ──────────────────────────────
+// Shows the FULL verbatim compatibility paragraph from Suzanne White's
+// zodiac chapter for the specific animal pair (e.g. Dog × Goat).
+function ChineseZodiacCompatTextCard({
+  aAnimal,
+  bAnimal,
+  text,
+  relation,
+}: {
+  aAnimal: string;
+  bAnimal: string;
+  relation: string;
+  text: string;
+}) {
+  const relLabel = ZODIAC_RELATION_LABELS[relation] || relation;
+  const toneColor =
+    relation === "secret-friend" || relation === "trine"
+      ? "#86efac"
+      : relation === "six-clash" || relation === "six-harm"
+        ? "#fb7185"
+        : relation === "same"
+          ? "#f1d98a"
+          : "#c4b5fd";
+  const sentences = React.useMemo(() => {
+    if (!text) return [""];
+    const matches = text.match(/[^.!?\n]+[.!?\n]+/g);
+    return matches || [text];
+  }, [text]);
+  const [, setActiveSentenceIndex] = React.useState(-1);
+  return (
+    <div
+      style={{
+        padding: "0.82rem",
+        borderRadius: 14,
+        background: `linear-gradient(135deg, ${toneColor}08, rgba(15,52,96,0.22))`,
+        border: `1px solid ${toneColor}30`,
+        marginBottom: "0.7rem",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "0.6rem",
+          marginBottom: "0.55rem",
+        }}
+      >
+        <div
+          style={{
+            fontFamily: "'Cinzel',serif",
+            fontSize: "0.62rem",
+            color: "#d4af37",
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+          }}
+        >
+          Chinese Zodiac Bond — {aAnimal} × {bAnimal}
+        </div>
+        <span
+          style={{
+            fontSize: "0.55rem",
+            padding: "0.18rem 0.5rem",
+            borderRadius: 99,
+            background: `${toneColor}15`,
+            color: toneColor,
+            border: `1px solid ${toneColor}30`,
+            textTransform: "capitalize",
+          }}
+        >
+          {relLabel}
+        </span>
+      </div>
+      <div style={{ fontSize: "0.68rem", color: "rgba(231,221,255,0.75)", lineHeight: 1.55, marginBottom: "0.4rem" }}>
+        <span style={{ color: "#d4af37", fontFamily: "'Cinzel',serif", fontWeight: 600 }}>
+          Suzanne White on {aAnimal} × {bAnimal}:
+        </span>
+      </div>
+      {text ? (
+        <SpeechPlayer
+          sentences={sentences}
+          onSentenceChange={(i) => setActiveSentenceIndex(i)}
+          onEnd={() => setActiveSentenceIndex(-1)}
+        />
+      ) : null}
+      <p style={{ fontSize: "0.66rem", color: "rgba(231,221,255,0.7)", lineHeight: 1.6, margin: "0.3rem 0 0" }}>
+        {text || "No compatibility text available for this animal pair."}
+      </p>
+      <div style={{ marginTop: "0.5rem", fontSize: "0.55rem", color: "rgba(200,180,240,0.4)", textAlign: "center" }}>
+        Full verbatim text from Suzanne White's Chinese zodiac chapter — unedited and unsummarized.
+      </div>
+    </div>
+  );
+}
+
+// ── New Astrology Compatibility Card (Codified) ─────────────────────────
+// Shows the Suzanne White New Astrology compatibility analysis with
+// structured appreciation and dissatisfaction indicators.
+function NewAstrologyCompatCard({ report }: { report: SoulResonanceReport }) {
+  const na = report.newAstrologyCompat!;
+  if (!na) return null;
+  const aName = report.soulA.name;
+  const bName = report.soulB.name;
+  const aSign = report.soulA.combinedSign;
+  const bSign = report.soulB.combinedSign;
+
+  // Determine overall New Astrology verdict
+  const hasAppreciation = na.aAppreciationOfB || na.bAppreciationOfA;
+  const hasDissatisfaction = na.aDissatisfactionWithB || na.bDissatisfactionWithA;
+  const verdictColor = hasDissatisfaction
+    ? hasAppreciation ? "#c4b5fd" : "#fb7185"
+    : hasAppreciation ? "#86efac" : "#67e8f9";
+  const verdictLabel = hasDissatisfaction
+    ? hasAppreciation ? "Mixed Signal" : "Caution Flag"
+    : hasAppreciation ? "Blessed Match" : "Unstated";
+
+  // Split the compatibilities text into sentences for the SpeechPlayer
+  const aSentences = React.useMemo(() => {
+    if (!na.aCompatText) return [""];
+    const matches = na.aCompatText.match(/[^.!?\n]+[.!?\n]+/g);
+    return matches || [na.aCompatText];
+  }, [na.aCompatText]);
+  const [, setASentenceIndex] = React.useState(-1);
+  const bSentences = React.useMemo(() => {
+    if (!na.bCompatText) return [""];
+    const matches = na.bCompatText.match(/[^.!?\n]+[.!?\n]+/g);
+    return matches || [na.bCompatText];
+  }, [na.bCompatText]);
+  const [, setBSentenceIndex] = React.useState(-1);
+
+  return (
+    <div
+      style={{
+        padding: "0.82rem",
+        borderRadius: 14,
+        background: `linear-gradient(135deg, ${verdictColor}06, rgba(10,4,28,0.28))`,
+        border: `1px solid ${verdictColor}22`,
+        marginBottom: "0.7rem",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "0.6rem",
+          marginBottom: "0.55rem",
+        }}
+      >
+        <div
+          style={{
+            fontFamily: "'Cinzel',serif",
+            fontSize: "0.62rem",
+            color: "#d4af37",
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+          }}
+        >
+          Western / Chinese Compatibility
+        </div>
+        <span
+          style={{
+            fontSize: "0.55rem",
+            padding: "0.18rem 0.5rem",
+            borderRadius: 99,
+            background: `${verdictColor}15`,
+            color: verdictColor,
+            border: `1px solid ${verdictColor}30`,
+          }}
+        >
+          {verdictLabel}
+        </span>
+      </div>
+
+      {/* A's compatibilities paragraph */}
+      <div style={{ marginBottom: "0.6rem" }}>
+        <div style={{ fontSize: "0.62rem", color: "#f1d98a", fontFamily: "'Cinzel',serif", marginBottom: "0.3rem" }}>
+          {aName}'s sign ({aSign}) on compatibility:
+        </div>
+        {na.aCompatText ? (
+          <SpeechPlayer
+            sentences={aSentences}
+            onSentenceChange={(i) => setASentenceIndex(i)}
+            onEnd={() => setASentenceIndex(-1)}
+          />
+        ) : null}
+        <p style={{ fontSize: "0.64rem", color: "rgba(231,221,255,0.68)", lineHeight: 1.55, margin: "0.2rem 0 0" }}>
+          {na.aCompatText || "No compatibility data for this combined sign."}
+        </p>
+      </div>
+
+      {/* B's compatibilities paragraph */}
+      <div style={{ marginBottom: "0.6rem" }}>
+        <div style={{ fontSize: "0.62rem", color: "#f1d98a", fontFamily: "'Cinzel',serif", marginBottom: "0.3rem" }}>
+          {bName}'s sign ({bSign}) on compatibility:
+        </div>
+        {na.bCompatText ? (
+          <SpeechPlayer
+            sentences={bSentences}
+            onSentenceChange={(i) => setBSentenceIndex(i)}
+            onEnd={() => setBSentenceIndex(-1)}
+          />
+        ) : null}
+        <p style={{ fontSize: "0.64rem", color: "rgba(231,221,255,0.68)", lineHeight: 1.55, margin: "0.2rem 0 0" }}>
+          {na.bCompatText || "No compatibility data for this combined sign."}
+        </p>
+      </div>
+
+      {/* Appreciation / Dissatisfaction indicators */}
+      {(hasAppreciation || hasDissatisfaction) && (
+        <div
+          style={{
+            padding: "0.55rem 0.65rem",
+            borderRadius: 10,
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid rgba(255,255,255,0.07)",
+          }}
+        >
+          <div style={{ fontSize: "0.58rem", color: "#d4af37", fontFamily: "'Cinzel',serif", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.42rem" }}>
+            Codified Relationship Signal
+          </div>
+          {na.aAppreciationOfB && (
+            <p style={{ margin: "0.25rem 0", fontSize: "0.66rem", color: "#86efac", lineHeight: 1.5 }}>
+              <b style={{ color: "#86efac" }}>♥ {aName} appreciates {bName}:</b> {na.aAppreciationOfB}
+            </p>
+          )}
+          {na.bAppreciationOfA && (
+            <p style={{ margin: "0.25rem 0", fontSize: "0.66rem", color: "#86efac", lineHeight: 1.5 }}>
+              <b style={{ color: "#86efac" }}>♥ {bName} appreciates {aName}:</b> {na.bAppreciationOfA}
+            </p>
+          )}
+          {na.aDissatisfactionWithB && (
+            <p style={{ margin: "0.25rem 0", fontSize: "0.66rem", color: "#fb7185", lineHeight: 1.5 }}>
+              <b style={{ color: "#fb7185" }}>⚡ {aName} is cautioned about {bName}:</b> {na.aDissatisfactionWithB}
+            </p>
+          )}
+          {na.bDissatisfactionWithA && (
+            <p style={{ margin: "0.25rem 0", fontSize: "0.66rem", color: "#fb7185", lineHeight: 1.5 }}>
+              <b style={{ color: "#fb7185" }}>⚡ {bName} is cautioned about {aName}:</b> {na.bDissatisfactionWithA}
+            </p>
+          )}
+          {!hasAppreciation && !hasDissatisfaction && (
+            <p style={{ margin: "0.25rem 0", fontSize: "0.64rem", color: "rgba(200,180,240,0.5)", lineHeight: 1.5 }}>
+              Neither sign explicitly recommends or warns against the other. The relationship's quality depends on numerological, Lo Shu, and Johari factors rather than the Western/Chinese astrology recommendation.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div style={{ marginTop: "0.45rem", fontSize: "0.55rem", color: "rgba(200,180,240,0.4)", textAlign: "center" }}>
+        Suzanne White's New Astrology compatibilities — parsed for explicit recommendations and avoidances matching the partner's Western sign and Chinese animal.
       </div>
     </div>
   );
