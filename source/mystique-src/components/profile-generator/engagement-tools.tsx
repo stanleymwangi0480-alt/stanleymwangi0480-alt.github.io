@@ -2467,7 +2467,7 @@ function JohariCompatibilitySection({ report }: { report: SoulResonanceReport })
           ))}
         </div>
 
-        {/* Friend/enemy view */}
+        {/* Friend/enemy view — multi-dimensional */}
         <div
           style={{
             padding: "0.62rem 0.7rem",
@@ -2487,28 +2487,108 @@ function JohariCompatibilitySection({ report }: { report: SoulResonanceReport })
               marginBottom: "0.42rem",
             }}
           >
-            Friend / Enemy View
+            Friend / Enemy View — Johari Number Relations
           </div>
-          <p style={{ margin: "0.18rem 0", fontSize: "0.71rem", color: "rgba(231,221,255,0.8)" }}>
-            {aName} sees {bName}:{" "}
-            <b style={{ color: viewColor(jc.aViewOfB) }}>{jc.aViewOfB}</b>
-          </p>
-          <p style={{ margin: "0.18rem 0", fontSize: "0.71rem", color: "rgba(231,221,255,0.8)" }}>
-            {bName} sees {aName}:{" "}
-            <b style={{ color: viewColor(jc.bViewOfA) }}>{jc.bViewOfA}</b>
-          </p>
-          {jc.aViewOfB !== jc.bViewOfA && (
-            <p
+
+          {/* Composite verdict */}
+          <div
+            style={{
+              padding: "0.42rem 0.55rem",
+              borderRadius: 10,
+              background: jc.compositeVerdict.includes("Friendly")
+                ? "rgba(134,239,172,0.08)"
+                : jc.compositeVerdict.includes("Tense")
+                  ? "rgba(251,113,133,0.08)"
+                  : "rgba(196,181,253,0.08)",
+              border: `1px solid ${
+                jc.compositeVerdict.includes("Friendly")
+                  ? "rgba(134,239,172,0.22)"
+                  : jc.compositeVerdict.includes("Tense")
+                    ? "rgba(251,113,133,0.22)"
+                    : "rgba(196,181,253,0.22)"
+              }`,
+              marginBottom: "0.55rem",
+            }}
+          >
+            <div
               style={{
-                margin: "0.4rem 0 0",
-                fontSize: "0.65rem",
-                color: "rgba(200,180,240,0.55)",
-                fontStyle: "italic",
+                fontFamily: "'Cinzel',serif",
+                fontSize: "0.62rem",
+                fontWeight: 800,
+                color: jc.compositeVerdict.includes("Friendly")
+                  ? "#86efac"
+                  : jc.compositeVerdict.includes("Tense")
+                    ? "#fb7185"
+                    : "#c4b5fd",
+                letterSpacing: "0.06em",
               }}
             >
-              Asymmetric perception — one sees friendship while the other feels tension. Worth naming openly.
+              {jc.compositeVerdict}
+            </div>
+            <p style={{ margin: "0.3rem 0 0", fontSize: "0.65rem", color: "rgba(231,221,255,0.78)", lineHeight: 1.5 }}>
+              {jc.compositeExplanation}
             </p>
-          )}
+          </div>
+
+          {/* Per-dimension grid */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr 1fr",
+              gap: "0.35rem",
+              fontSize: "0.64rem",
+            }}
+          >
+            <div style={{ textAlign: "center", color: "rgba(200,180,240,0.45)", fontSize: "0.54rem", fontFamily: "'Cinzel',serif", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Psychic (Day)
+            </div>
+            <div style={{ textAlign: "center", color: "rgba(200,180,240,0.45)", fontSize: "0.54rem", fontFamily: "'Cinzel',serif", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Destiny (Name)
+            </div>
+            <div style={{ textAlign: "center", color: "rgba(200,180,240,0.45)", fontSize: "0.54rem", fontFamily: "'Cinzel',serif", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+              Life Path (Total)
+            </div>
+
+            <div style={{ textAlign: "center", padding: "0.3rem 0.15rem", borderRadius: 8, background: "rgba(255,255,255,0.04)" }}>
+              <b style={{ color: viewColor(jc.aPsychicViewOfBPsychic) }}>{jc.aPsychicViewOfBPsychic}</b>
+            </div>
+            <div style={{ textAlign: "center", padding: "0.3rem 0.15rem", borderRadius: 8, background: "rgba(255,255,255,0.04)" }}>
+              <b style={{ color: viewColor(jc.aDestinyViewOfBDestiny) }}>{jc.aDestinyViewOfBDestiny}</b>
+            </div>
+            <div style={{ textAlign: "center", padding: "0.3rem 0.15rem", borderRadius: 8, background: "rgba(255,255,255,0.04)" }}>
+              <b style={{ color: viewColor(jc.aLifePathViewOfBLifePath) }}>{jc.aLifePathViewOfBLifePath}</b>
+            </div>
+
+            <div style={{ textAlign: "center", color: "rgba(200,180,240,0.35)", fontSize: "0.52rem" }}>
+              {aName} → {bName}
+            </div>
+            <div style={{ textAlign: "center", color: "rgba(200,180,240,0.35)", fontSize: "0.52rem" }}>
+              {reduceSingle(report.soulA.destiny)} → {reduceSingle(report.soulB.destiny)}
+            </div>
+            <div style={{ textAlign: "center", color: "rgba(200,180,240,0.35)", fontSize: "0.52rem" }}>
+              {reduceSingle(report.soulA.lifePath)} → {reduceSingle(report.soulB.lifePath)}
+            </div>
+
+            <div style={{ textAlign: "center", padding: "0.3rem 0.15rem", borderRadius: 8, background: "rgba(255,255,255,0.04)" }}>
+              <b style={{ color: viewColor(jc.bPsychicViewOfAPsychic) }}>{jc.bPsychicViewOfAPsychic}</b>
+            </div>
+            <div style={{ textAlign: "center", padding: "0.3rem 0.15rem", borderRadius: 8, background: "rgba(255,255,255,0.04)" }}>
+              <b style={{ color: viewColor(jc.bDestinyViewOfADestiny) }}>{jc.bDestinyViewOfADestiny}</b>
+            </div>
+            <div style={{ textAlign: "center", padding: "0.3rem 0.15rem", borderRadius: 8, background: "rgba(255,255,255,0.04)" }}>
+              <b style={{ color: viewColor(jc.bLifePathViewOfALifePath) }}>{jc.bLifePathViewOfALifePath}</b>
+            </div>
+
+            <div style={{ textAlign: "center", color: "rgba(200,180,240,0.35)", fontSize: "0.52rem" }}>
+              {bName} → {aName}
+            </div>
+            <div style={{ textAlign: "center", color: "rgba(200,180,240,0.35)", fontSize: "0.52rem" }}>
+              {reduceSingle(report.soulB.destiny)} → {reduceSingle(report.soulA.destiny)}
+            </div>
+            <div style={{ textAlign: "center", color: "rgba(200,180,240,0.35)", fontSize: "0.52rem" }}>
+              {reduceSingle(report.soulB.lifePath)} → {reduceSingle(report.soulA.lifePath)}
+            </div>
+          </div>
         </div>
 
         {/* Pair readings */}

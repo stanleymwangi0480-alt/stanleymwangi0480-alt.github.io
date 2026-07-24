@@ -113,6 +113,20 @@ export interface SoulResonanceReport {
     destinyPair: JohariPairCompat | null;
     crossPairAB: JohariPairCompat | null;  // A's psychic ↔ B's destiny
     crossPairBA: JohariPairCompat | null;  // B's psychic ↔ A's destiny
+    /** Psychic-number view: A's psychic sees B's psychic as friend/enemy */
+    aPsychicViewOfBPsychic: "Friendly" | "Neutral" | "Enemy";
+    /** Destiny-number view: A's destiny sees B's destiny as friend/enemy */
+    aDestinyViewOfBDestiny: "Friendly" | "Neutral" | "Enemy";
+    /** Life-path view: A's life path sees B's life path as friend/enemy */
+    aLifePathViewOfBLifePath: "Friendly" | "Neutral" | "Enemy";
+    bPsychicViewOfAPsychic: "Friendly" | "Neutral" | "Enemy";
+    bDestinyViewOfADestiny: "Friendly" | "Neutral" | "Enemy";
+    bLifePathViewOfALifePath: "Friendly" | "Neutral" | "Enemy";
+    /** Composite verdict synthesizing all three dimensions */
+    compositeVerdict: "Strongly Friendly" | "Generally Friendly" | "Mixed" | "Generally Tense" | "Strongly Tense";
+    /** Brief explanation of the composite verdict */
+    compositeExplanation: string;
+    // Legacy fields kept for backward compatibility with existing UI code
     aViewOfB: "Friendly" | "Neutral" | "Enemy";
     bViewOfA: "Friendly" | "Neutral" | "Enemy";
   };
@@ -704,6 +718,41 @@ export function generateSoulResonance(a: SoulVitals, b: SoulVitals, targetYear =
     const profileA = JOHARI_PSYCHIC_PROFILES[reduceSingle(a.psychic)];
     const profileB = JOHARI_PSYCHIC_PROFILES[reduceSingle(b.psychic)];
     if (!profileA || !profileB) return undefined;
+
+    // Multi-dimensional friend/enemy analysis (psychic, destiny, life path)
+    const aPsyViewBPsy = johariViewOf(reduceSingle(a.psychic), reduceSingle(b.psychic));
+    const bPsyViewAPsy = johariViewOf(reduceSingle(b.psychic), reduceSingle(a.psychic));
+    const aDestViewBDest = johariViewOf(reduceSingle(a.destiny), reduceSingle(b.destiny));
+    const bDestViewADest = johariViewOf(reduceSingle(b.destiny), reduceSingle(a.destiny));
+    const aLPViewBLP = johariViewOf(reduceSingle(a.lifePath), reduceSingle(b.lifePath));
+    const bLPViewALP = johariViewOf(reduceSingle(b.lifePath), reduceSingle(a.lifePath));
+
+    // Composite verdict: count friendly vs enemy across all 6 directional views
+    const allViews = [aPsyViewBPsy, bPsyViewAPsy, aDestViewBDest, bDestViewADest, aLPViewBLP, bLPViewALP];
+    const friendlyCount = allViews.filter(v => v === "Friendly").length;
+    const enemyCount = allViews.filter(v => v === "Enemy").length;
+    const neutralCount = allViews.filter(v => v === "Neutral").length;
+
+    let compositeVerdict: "Strongly Friendly" | "Generally Friendly" | "Mixed" | "Generally Tense" | "Strongly Tense";
+    let compositeExplanation: string;
+
+    if (friendlyCount >= 5) {
+      compositeVerdict = "Strongly Friendly";
+      compositeExplanation = `${friendlyCount} of 6 number dimensions show mutual friendliness — ${profileA.planet} (${a.psychic}/${a.destiny}/${a.lifePath}) and ${profileB.planet} (${b.psychic}/${b.destiny}/${b.lifePath}) are naturally drawn to each other across almost every dimension. A deeply supportive bond.`;
+    } else if (friendlyCount >= 3 && enemyCount <= 1) {
+      compositeVerdict = "Generally Friendly";
+      compositeExplanation = `${friendlyCount} friendly, ${neutralCount} neutral, ${enemyCount} tense dimensions. The bond has a natural warmth in most areas, with only minor friction points that conscious effort can smooth over.`;
+    } else if (enemyCount >= 5) {
+      compositeVerdict = "Strongly Tense";
+      compositeExplanation = `${enemyCount} of 6 number dimensions show mutual tension — ${profileA.planet} and ${profileB.planet} energies clash across psychic, destiny and life path. This demands significant awareness and compromise to sustain.`;
+    } else if (enemyCount >= 3) {
+      compositeVerdict = "Generally Tense";
+      compositeExplanation = `${enemyCount} tense, ${neutralCount} neutral, ${friendlyCount} friendly dimensions. The relationship encounters structural resistance in key areas. Areas of friendliness exist but need active cultivation.`;
+    } else {
+      compositeVerdict = "Mixed";
+      compositeExplanation = `${friendlyCount} friendly, ${neutralCount} neutral, ${enemyCount} tense dimensions across psychic (${aPsyViewBPsy}/${bPsyViewAPsy}), destiny (${aDestViewBDest}/${bDestViewADest}) and life path (${aLPViewBLP}/${bLPViewALP}). Neither naturally harmonious nor inherently hostile — the outcome depends on conscious effort and mutual respect.`;
+    }
+
     return {
       profileA,
       profileB,
@@ -711,8 +760,17 @@ export function generateSoulResonance(a: SoulVitals, b: SoulVitals, targetYear =
       destinyPair: getJohariPairCompatibility(a.destiny, b.destiny),
       crossPairAB: getJohariPairCompatibility(a.psychic, b.destiny),
       crossPairBA: getJohariPairCompatibility(b.psychic, a.destiny),
-      aViewOfB: johariViewOf(reduceSingle(a.psychic), reduceSingle(b.psychic)),
-      bViewOfA: johariViewOf(reduceSingle(b.psychic), reduceSingle(a.psychic)),
+      aPsychicViewOfBPsychic: aPsyViewBPsy,
+      aDestinyViewOfBDestiny: aDestViewBDest,
+      aLifePathViewOfBLifePath: aLPViewBLP,
+      bPsychicViewOfAPsychic: bPsyViewAPsy,
+      bDestinyViewOfADestiny: bDestViewADest,
+      bLifePathViewOfALifePath: bLPViewALP,
+      compositeVerdict,
+      compositeExplanation,
+      // Legacy fields for backward compatibility
+      aViewOfB: aPsyViewBPsy,
+      bViewOfA: bPsyViewAPsy,
     };
   })();
 
