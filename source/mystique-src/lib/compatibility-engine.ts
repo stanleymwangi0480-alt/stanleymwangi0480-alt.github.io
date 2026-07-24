@@ -122,25 +122,46 @@ export interface SoulResonanceReport {
    */
   combinedWeather?: CombinedWeatherReport;
   /**
-   * Full Chinese zodiac compatibility text — the verbatim paragraph
-   * from Suzanne White's zodiac chapter about this specific animal pair.
-   * E.g. Dog's paragraph about Goat, verbatim.
+   * Full verbatim Chinese zodiac compatibility paragraph for the
+   * animal pair, sourced from Suzanne White's zodiacData. E.g. the
+   * Dog entry's compatibilities["Rat"] paragraph placed here
+   * verbatim (no edits, no summary).
    */
   chineseZodiacCompatText?: string;
   /**
-   * Codified Western/Chinese (Suzanne White New Astrology) compatibility
-   * analysis: the full compatibilities paragraph for each person's
-   * combined sign, plus structured appreciation/dissatisfaction indicators
-   * that detect whether the partner's Western sign or Chinese animal
-   * is named as recommended or warned against.
+   * Codified Western/Chinese (New Astrology) compatibility analysis:
+   * each soul's Suzanne White compatibilities paragraph plus structured
+   * appreciation/dissatisfaction indicators derived from whether the
+   * partner's actual Western sign and Chinese animal appear in the
+   * positive or avoidance portions of the paragraph.
    */
   newAstrologyCompat?: {
     aCompatText: string;
     bCompatText: string;
-    aAppreciationOfB: string | null;
-    aDissatisfactionWithB: string | null;
-    bAppreciationOfA: string | null;
-    bDissatisfactionWithA: string | null;
+    aAppreciationOfB: {
+      westernSignMatch: boolean;
+      chineseAnimalMatch: boolean;
+      combinedSignMatch: boolean;
+      details: string;
+    };
+    aDissatisfactionWithB: {
+      westernSignMatch: boolean;
+      chineseAnimalMatch: boolean;
+      combinedSignMatch: boolean;
+      details: string;
+    };
+    bAppreciationOfA: {
+      westernSignMatch: boolean;
+      chineseAnimalMatch: boolean;
+      combinedSignMatch: boolean;
+      details: string;
+    };
+    bDissatisfactionWithA: {
+      westernSignMatch: boolean;
+      chineseAnimalMatch: boolean;
+      combinedSignMatch: boolean;
+      details: string;
+    };
   };
 }
 
@@ -512,6 +533,73 @@ export function analyzePYInteraction(a: SoulVitals, b: SoulVitals, targetYear = 
 // Main entry point
 // ---------------------------------------------------------------------
  
+// ---------------------------------------------------------------------
+// Codify Suzanne White: parse the compatibilities paragraph to detect
+// whether a partner's actual Western sign and Chinese animal appear in
+// the positive (appreciation) or negative (dissatisfaction/avoidance)
+// portion of the text.
+// ---------------------------------------------------------------------
+const AVOID_PATTERN = /stay away|avoid|leave|wide berth|poison|don't|don't|shun|refrain|give.*(?:slip|berth)|flee|disastrous|bother with|not to be|too.*(?:cool|much|heady)|unnerve|exasperate|overpower/gi;
+
+function codifySuzanneWhite(
+  sourceText: string,
+  partnerCombinedSign: string,
+  partnerWestern: string,
+  partnerAnimal: string,
+): {
+  appreciation: { westernSignMatch: boolean; chineseAnimalMatch: boolean; combinedSignMatch: boolean; details: string };
+  dissatisfaction: { westernSignMatch: boolean; chineseAnimalMatch: boolean; combinedSignMatch: boolean; details: string };
+} {
+  const lower = sourceText.toLowerCase();
+  const lowerCombined = partnerCombinedSign.toLowerCase();
+  const lowerWestern = partnerWestern.toLowerCase();
+  const lowerAnimal = partnerAnimal.toLowerCase();
+
+  // Split the text into positive and negative portions at the first
+  // avoidance boundary. Everything before that boundary is "positive"
+  // (appreciation), everything after is "negative" (dissatisfaction).
+  const avoidMatch = lower.search(AVOID_PATTERN);
+  const positiveSection = avoidMatch >= 0 ? lower.slice(0, avoidMatch) : lower;
+  const negativeSection = avoidMatch >= 0 ? lower.slice(avoidMatch) : "";
+
+  // Build appreciation indicators
+  const combinedInPositive = positiveSection.includes(lowerCombined);
+  const westernInPositive = positiveSection.includes(lowerWestern);
+  const animalInPositive = positiveSection.includes(lowerAnimal);
+
+  const appreciationDetails: string[] = [];
+  if (combinedInPositive) appreciationDetails.push(`${partnerCombinedSign} is explicitly named as a recommended match`);
+  if (westernInPositive && !combinedInPositive) appreciationDetails.push(`The Western sign ${partnerWestern} appears in the recommended section`);
+  if (animalInPositive && !combinedInPositive) appreciationDetails.push(`The Chinese animal ${partnerAnimal} appears in the recommended section`);
+  if (appreciationDetails.length === 0) appreciationDetails.push(`No explicit recommendation found for ${partnerCombinedSign} in the positive portion`);
+
+  // Build dissatisfaction indicators
+  const combinedInNegative = negativeSection.includes(lowerCombined);
+  const westernInNegative = negativeSection.includes(lowerWestern);
+  const animalInNegative = negativeSection.includes(lowerAnimal);
+
+  const dissatisfactionDetails: string[] = [];
+  if (combinedInNegative) dissatisfactionDetails.push(`${partnerCombinedSign} is explicitly named as a cautioned/avoided match`);
+  if (westernInNegative && !combinedInNegative) dissatisfactionDetails.push(`The Western sign ${partnerWestern} appears in the avoidance/caution section`);
+  if (animalInNegative && !combinedInNegative) dissatisfactionDetails.push(`The Chinese animal ${partnerAnimal} appears in the avoidance/caution section`);
+  if (dissatisfactionDetails.length === 0) dissatisfactionDetails.push(`No explicit caution found for ${partnerCombinedSign} in the avoidance portion`);
+
+  return {
+    appreciation: {
+      westernSignMatch: westernInPositive,
+      chineseAnimalMatch: animalInPositive,
+      combinedSignMatch: combinedInPositive,
+      details: appreciationDetails.join("; "),
+    },
+    dissatisfaction: {
+      westernSignMatch: westernInNegative,
+      chineseAnimalMatch: animalInNegative,
+      combinedSignMatch: combinedInNegative,
+      details: dissatisfactionDetails.join("; "),
+    },
+  };
+}
+
 export function generateSoulResonance(a: SoulVitals, b: SoulVitals, targetYear = new Date().getFullYear()): SoulResonanceReport {
   const psychicHarmony = cheiroHarmony(a.psychic, b.psychic);
   const destinyHarmony = cheiroHarmony(a.destiny, b.destiny);
@@ -582,75 +670,6 @@ export function generateSoulResonance(a: SoulVitals, b: SoulVitals, targetYear =
   if (pyInteraction.warning) parts.push(pyInteraction.warning);
   if (pyInteraction.opportunity) parts.push(pyInteraction.opportunity);
  
-
-  // ── Chinese Zodiac Compatibility Text (verbatim) ──────────────────────
-  const aAnimalKey = a.zodiacAnimal as keyof typeof zodiacData;
-  const bAnimalKey = b.zodiacAnimal as keyof typeof zodiacData;
-  const aZodiacCompat = zodiacData[aAnimalKey]?.compatibilities?.[b.zodiacAnimal] || "";
-  const bZodiacCompat = zodiacData[bAnimalKey]?.compatibilities?.[a.zodiacAnimal] || "";
-  // The zodiac compatibilities are symmetric pair descriptions, so both
-  // directions contain the same paragraph. We use A's perspective as the
-  // canonical text, but provide B's too for completeness.
-  const chineseZodiacCompatText = aZodiacCompat || bZodiacCompat || "";
-
-  // ── Codified New Astrology (Suzanne White) Compatibility ──────────────
-  const aSignKey = a.combinedSign as keyof typeof NEW_ASTROLOGY_DATA;
-  const bSignKey = b.combinedSign as keyof typeof NEW_ASTROLOGY_DATA;
-  const aCompatFullText = (NEW_ASTROLOGY_DATA[aSignKey]?.compatibilities || "");
-  const bCompatFullText = (NEW_ASTROLOGY_DATA[bSignKey]?.compatibilities || "");
-
-  // Codify: parse each person's compatibilities text to detect if the
-  // partner's Western sign or Chinese animal is recommended or warned against.
-  // The Suzanne White compatibilities text typically has positive recommendations
-  // first, then switches to warnings ("Stay away from...", "Avoid...").
-  const AVOID_PATTERN = /stay away|avoid|leave|wide berth|poison|don't|don't/gi;
-
-  const codifySuzanneWhite = (
-    sourceText: string,
-    targetWestern: string,
-    targetAnimal: string,
-    targetCombinedSign: string,
-  ): { appreciation: string | null; dissatisfaction: string | null } => {
-    if (!sourceText) return { appreciation: null, dissatisfaction: null };
-    const lowerSource = sourceText.toLowerCase();
-    const lowerWestern = targetWestern.toLowerCase();
-    const lowerAnimal = targetAnimal.toLowerCase();
-    const lowerCombined = targetCombinedSign.toLowerCase();
-
-    // Split text at the first avoidance boundary
-    const avoidMatch = lowerSource.search(AVOID_PATTERN);
-    const positiveSection = avoidMatch >= 0 ? lowerSource.slice(0, avoidMatch) : lowerSource;
-    const negativeSection = avoidMatch >= 0 ? lowerSource.slice(avoidMatch) : "";
-
-    let appreciation: string | null = null;
-    let dissatisfaction: string | null = null;
-
-    // Check if the partner's combined sign is explicitly named as a good match
-    if (positiveSection.includes(lowerCombined)) {
-      appreciation = `Suzanne White explicitly recommends ${targetCombinedSign} for this sign. The compatibility paragraph names it as a strong match in the positive section.`;
-    } else if (positiveSection.includes(lowerWestern) && positiveSection.includes(lowerAnimal)) {
-      appreciation = `Suzanne White recommends both ${targetWestern} and ${targetAnimal} for this sign — they appear together in the positive compatibility section, indicating a doubly blessed match.`;
-    } else if (positiveSection.includes(lowerWestern)) {
-      appreciation = `Suzanne White recommends ${targetWestern} for this sign. The compatibility paragraph names this Western sign as enhancing the relationship, even though ${targetAnimal} is not explicitly mentioned in the same context.`;
-    } else if (positiveSection.includes(lowerAnimal)) {
-      appreciation = `Suzanne White recommends ${targetAnimal} for this sign. The compatibility paragraph names this Chinese animal as a good match, even though ${targetWestern} is not explicitly mentioned in the same context.`;
-    }
-
-    // Check if the partner's sign is warned against
-    if (negativeSection.includes(lowerCombined)) {
-      dissatisfaction = `Suzanne White warns against ${targetCombinedSign} for this sign. The compatibility paragraph places this combined sign in the avoidance section — the relationship carries a caution flag.`;
-    } else if (negativeSection.includes(lowerWestern) && negativeSection.includes(lowerAnimal)) {
-      dissatisfaction = `Suzanne White warns against both ${targetWestern} and ${targetAnimal} for this sign — they appear together in the avoidance section, indicating a doubly flagged mismatch.`;
-    } else if (negativeSection.includes(lowerWestern) || negativeSection.includes(lowerAnimal)) {
-      dissatisfaction = `Suzanne White flags ${negativeSection.includes(lowerWestern) ? targetWestern : targetAnimal} in the avoidance section for this sign. The relationship carries a caution flag, though the other dimension (${negativeSection.includes(lowerWestern) ? targetAnimal : targetWestern}) is not explicitly warned against.`;
-    }
-
-    return { appreciation, dissatisfaction };
-  };
-
-  const aCodified = codifySuzanneWhite(aCompatFullText, b.westernSign, b.zodiacAnimal, b.combinedSign);
-  const bCodified = codifySuzanneWhite(bCompatFullText, a.westernSign, a.zodiacAnimal, a.combinedSign);
-
   return {
     soulA: a, soulB: b, overall,
     domains: { romance: romanceScore, partnership: partnershipScore, friendship: friendshipScore },
@@ -663,15 +682,27 @@ export function generateSoulResonance(a: SoulVitals, b: SoulVitals, targetYear =
     pyInteraction,
     johariCompatibility: johariCompat,
     combinedWeather,
-    chineseZodiacCompatText,
-    newAstrologyCompat: {
-      aCompatText: aCompatFullText,
-      bCompatText: bCompatFullText,
-      aAppreciationOfB: aCodified.appreciation,
-      aDissatisfactionWithB: aCodified.dissatisfaction,
-      bAppreciationOfA: bCodified.appreciation,
-      bDissatisfactionWithA: bCodified.dissatisfaction,
-    },
+    // ── Chinese Zodiac Compatibility Text (verbatim) ────────────────
+    chineseZodiacCompatText:
+      zodiacData[a.zodiacAnimal]?.compatibilities?.[b.zodiacAnimal] ||
+      zodiacData[b.zodiacAnimal]?.compatibilities?.[a.zodiacAnimal] ||
+      "",
+    // ── New Astrology Codified Compatibility ─────────────────────────
+    newAstrologyCompat: (() => {
+      const aText = NEW_ASTROLOGY_DATA[a.combinedSign]?.compatibilities || "";
+      const bText = NEW_ASTROLOGY_DATA[b.combinedSign]?.compatibilities || "";
+      if (!aText && !bText) return undefined;
+      const aCodify = codifySuzanneWhite(aText, b.combinedSign, b.westernSign, b.zodiacAnimal);
+      const bCodify = codifySuzanneWhite(bText, a.combinedSign, a.westernSign, a.zodiacAnimal);
+      return {
+        aCompatText: aText,
+        bCompatText: bText,
+        aAppreciationOfB: aCodify.appreciation,
+        aDissatisfactionWithB: aCodify.dissatisfaction,
+        bAppreciationOfA: bCodify.appreciation,
+        bDissatisfactionWithA: bCodify.dissatisfaction,
+      };
+    })(),
   };
 }
  
