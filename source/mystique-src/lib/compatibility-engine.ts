@@ -539,7 +539,11 @@ export function analyzePYInteraction(a: SoulVitals, b: SoulVitals, targetYear = 
 // the positive (appreciation) or negative (dissatisfaction/avoidance)
 // portion of the text.
 // ---------------------------------------------------------------------
-const AVOID_PATTERN = /stay away|avoid|leave|wide berth|poison|don't|don't|shun|refrain|give.*(?:slip|berth)|flee|disastrous|bother with|not to be|too.*(?:cool|much|heady)|unnerve|exasperate|overpower/gi;
+// Avoidance keywords — Suzanne White data uses curly apostrophes (U+2019)
+// so both variants are included. The approach is sentence-level: each
+// sentence is checked individually for avoidance language, and sign
+// mentions within that sentence are classified accordingly.
+const AVOID_SENTENCE_PATTERN = /stay away|avoid|leave|wide berth|poison|don\u2019t|don't|shun|refrain|give.*(?:slip|berth)|flee|disastrous|bother with|not to be|too.*(?:cool|much|heady)|unnerve|exasperate|overpower|won\u2019t|won't|can\u2019t|can't|shouldn\u2019t|shouldn't|mustn\u2019t|mustn't|wouldn\u2019t|wouldn't|don\u2019t pick|don't pick|don\u2019t marry|don't marry|don\u2019t go|don't go|don\u2019t bother|don't bother|not to be trusted/gi;
 
 function codifySuzanneWhite(
   sourceText: string,
@@ -555,46 +559,83 @@ function codifySuzanneWhite(
   const lowerWestern = partnerWestern.toLowerCase();
   const lowerAnimal = partnerAnimal.toLowerCase();
 
-  // Split the text into positive and negative portions at the first
-  // avoidance boundary. Everything before that boundary is "positive"
-  // (appreciation), everything after is "negative" (dissatisfaction).
-  const avoidMatch = lower.search(AVOID_PATTERN);
-  const positiveSection = avoidMatch >= 0 ? lower.slice(0, avoidMatch) : lower;
-  const negativeSection = avoidMatch >= 0 ? lower.slice(avoidMatch) : "";
+  // Split text into sentences for per-sentence classification.
+  // This avoids the fundamental flaw of splitting at a single
+  // boundary point — a sign can appear in a positive sentence
+  // AND a negative sentence in the same paragraph.
+  const sentences = lower.match(/[^.!?]+[.!?]+/g) || [lower];
 
-  // Build appreciation indicators
-  const combinedInPositive = positiveSection.includes(lowerCombined);
-  const westernInPositive = positiveSection.includes(lowerWestern);
-  const animalInPositive = positiveSection.includes(lowerAnimal);
-
+  let appreciationWestern = false;
+  let appreciationAnimal = false;
+  let appreciationCombined = false;
+  let dissatisfactionWestern = false;
+  let dissatisfactionAnimal = false;
+  let dissatisfactionCombined = false;
   const appreciationDetails: string[] = [];
-  if (combinedInPositive) appreciationDetails.push(`${partnerCombinedSign} is explicitly named as a recommended match`);
-  if (westernInPositive && !combinedInPositive) appreciationDetails.push(`The Western sign ${partnerWestern} appears in the recommended section`);
-  if (animalInPositive && !combinedInPositive) appreciationDetails.push(`The Chinese animal ${partnerAnimal} appears in the recommended section`);
-  if (appreciationDetails.length === 0) appreciationDetails.push(`No explicit recommendation found for ${partnerCombinedSign} in the positive portion`);
-
-  // Build dissatisfaction indicators
-  const combinedInNegative = negativeSection.includes(lowerCombined);
-  const westernInNegative = negativeSection.includes(lowerWestern);
-  const animalInNegative = negativeSection.includes(lowerAnimal);
-
   const dissatisfactionDetails: string[] = [];
-  if (combinedInNegative) dissatisfactionDetails.push(`${partnerCombinedSign} is explicitly named as a cautioned/avoided match`);
-  if (westernInNegative && !combinedInNegative) dissatisfactionDetails.push(`The Western sign ${partnerWestern} appears in the avoidance/caution section`);
-  if (animalInNegative && !combinedInNegative) dissatisfactionDetails.push(`The Chinese animal ${partnerAnimal} appears in the avoidance/caution section`);
-  if (dissatisfactionDetails.length === 0) dissatisfactionDetails.push(`No explicit caution found for ${partnerCombinedSign} in the avoidance portion`);
+
+  for (const sentence of sentences) {
+    const hasAvoid = AVOID_SENTENCE_PATTERN.test(sentence);
+    // Reset lastIndex for each iteration (gi flag)
+    AVOID_SENTENCE_PATTERN.lastIndex = 0;
+
+    const hasCombined = sentence.includes(lowerCombined);
+    const hasWestern = sentence.includes(lowerWestern);
+    const hasAnimal = sentence.includes(lowerAnimal);
+
+    if (!hasWestern && !hasAnimal && !hasCombined) continue;
+
+    if (hasAvoid) {
+      // This sentence contains avoidance/caution language AND mentions
+      // the partner's sign(s) → classified as dissatisfaction
+      if (hasCombined) {
+        dissatisfactionCombined = true;
+        dissatisfactionDetails.push(`${partnerCombinedSign} is discouraged ("${sentence.trim().slice(0, 60)}…")`);
+      } else {
+        if (hasWestern) {
+          dissatisfactionWestern = true;
+          dissatisfactionDetails.push(`${partnerWestern} appears in a caution sentence ("${sentence.trim().slice(0, 60)}…")`);
+        }
+        if (hasAnimal) {
+          dissatisfactionAnimal = true;
+          dissatisfactionDetails.push(`${partnerAnimal} appears in a caution sentence ("${sentence.trim().slice(0, 60)}…")`);
+        }
+      }
+    } else {
+      // This sentence has NO avoidance language AND mentions the
+      // partner's sign(s) → classified as appreciation
+      if (hasCombined) {
+        appreciationCombined = true;
+        appreciationDetails.push(`${partnerCombinedSign} is recommended ("${sentence.trim().slice(0, 60)}…")`);
+      } else {
+        if (hasWestern) {
+          appreciationWestern = true;
+          appreciationDetails.push(`${partnerWestern} appears in a recommendation ("${sentence.trim().slice(0, 60)}…")`);
+        }
+        if (hasAnimal) {
+          appreciationAnimal = true;
+          appreciationDetails.push(`${partnerAnimal} appears in a recommendation ("${sentence.trim().slice(0, 60)}…")`);
+        }
+      }
+    }
+  }
+
+  if (appreciationDetails.length === 0)
+    appreciationDetails.push(`No explicit recommendation found for ${partnerCombinedSign}`);
+  if (dissatisfactionDetails.length === 0)
+    dissatisfactionDetails.push(`No explicit caution found for ${partnerCombinedSign}`);
 
   return {
     appreciation: {
-      westernSignMatch: westernInPositive,
-      chineseAnimalMatch: animalInPositive,
-      combinedSignMatch: combinedInPositive,
+      westernSignMatch: appreciationWestern,
+      chineseAnimalMatch: appreciationAnimal,
+      combinedSignMatch: appreciationCombined,
       details: appreciationDetails.join("; "),
     },
     dissatisfaction: {
-      westernSignMatch: westernInNegative,
-      chineseAnimalMatch: animalInNegative,
-      combinedSignMatch: combinedInNegative,
+      westernSignMatch: dissatisfactionWestern,
+      chineseAnimalMatch: dissatisfactionAnimal,
+      combinedSignMatch: dissatisfactionCombined,
       details: dissatisfactionDetails.join("; "),
     },
   };

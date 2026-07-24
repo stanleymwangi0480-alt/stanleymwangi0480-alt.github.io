@@ -49,6 +49,7 @@ import {
   X,
   CalendarDays,
   Bell,
+  Users,
 } from "lucide-react";
 import { AccordionContentWithPlayer } from "./accordion-content-with-player";
 import InstallButton from "../InstallButton";
@@ -2008,6 +2009,25 @@ export function ResultsDisplay({
             birthMonth={numerology.birthMonth}
             birthYear={numerology.birthYear || new Date().getFullYear() - 30}
           />
+          {/* ── Soul Resonance (permanent, above all tabs) ── */}
+          {history.length >= 1 && (
+            <CollapsibleSection
+              title="Soul Weather"
+              subtitle="Current personal-year climate for saved souls"
+              icon={<Star size={16} />}
+            >
+              <SoulWeatherDashboard history={history} onLoad={() => {}} />
+            </CollapsibleSection>
+          )}
+          {history.length >= 2 && (
+            <CollapsibleSection
+              title="Soul Resonance"
+              subtitle="Compatibility via Cheiro harmony, Lo Shu, personal-year sync & zodiac rhythm"
+              icon={<Users size={16} />}
+            >
+              <SoulResonancePanel history={history} />
+            </CollapsibleSection>
+          )}
           {/* ── Share Reading (centered, above all tabs) ── */}
           <div style={{ display: "flex", justifyContent: "center", marginBottom: "0.9rem" }}>
             <ShareReadingButton insight={insight} numerology={numerology} />
@@ -2058,24 +2078,6 @@ export function ResultsDisplay({
                     />
                   )}
                   <NumberMeaningsSection />
-                  {history.length >= 1 && (
-                    <CollapsibleSection
-                      title="Soul Weather"
-                      subtitle="Current personal-year climate for saved souls"
-                      icon={<Star size={16} />}
-                    >
-                      <SoulWeatherDashboard history={history} onLoad={() => {}} />
-                    </CollapsibleSection>
-                  )}
-                  {history.length >= 2 && (
-                    <CollapsibleSection
-                      title="Soul Resonance"
-                      subtitle="Compatibility via Cheiro harmony, Lo Shu, personal-year sync & zodiac rhythm"
-                      icon={<Users size={16} />}
-                    >
-                      <SoulResonancePanel history={history} />
-                    </CollapsibleSection>
-                  )}
                 </>
               )}
               {activeTab === "new-astro" && (
