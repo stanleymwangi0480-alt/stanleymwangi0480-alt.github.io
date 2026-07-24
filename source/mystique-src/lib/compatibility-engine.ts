@@ -539,11 +539,29 @@ export function analyzePYInteraction(a: SoulVitals, b: SoulVitals, targetYear = 
 // the positive (appreciation) or negative (dissatisfaction/avoidance)
 // portion of the text.
 // ---------------------------------------------------------------------
-// Avoidance keywords — Suzanne White data uses curly apostrophes (U+2019)
-// so both variants are included. The approach is sentence-level: each
-// sentence is checked individually for avoidance language, and sign
-// mentions within that sentence are classified accordingly.
-const AVOID_SENTENCE_PATTERN = /stay away|avoid|leave|wide berth|poison|don\u2019t|don't|shun|refrain|give.*(?:slip|berth)|flee|disastrous|bother with|not to be|too.*(?:cool|much|heady)|unnerve|exasperate|overpower|won\u2019t|won't|can\u2019t|can't|shouldn\u2019t|shouldn't|mustn\u2019t|mustn't|wouldn\u2019t|wouldn't|don\u2019t pick|don't pick|don\u2019t marry|don't marry|don\u2019t go|don't go|don\u2019t bother|don't bother|not to be trusted/gi;
+// ── Suzanne White compat codification ────────────────────────────────────
+//
+// Two-phase sentence-level analysis:
+//   Phase 1 — POSITIVE OVERRIDE: if a sentence contains an unmistakable
+//     recommendation phrase ("can't go wrong with", "particularly happy",
+//     "best bet", etc.) it is classified as appreciation regardless of
+//     any negation words that also appear in it.
+//   Phase 2 — CLEAR AVOIDANCE: if a sentence does NOT have a positive
+//     override but DOES contain an unmistakable caution/avoidance phrase
+//     ("Don't pick a", "Stay away from", "Avoid", etc.) it is classified
+//     as dissatisfaction.
+//   Sentences matching neither phase are neutral (ignored).
+//
+// This avoids the two previous bugs:
+//   1. Curly apostrophe mismatch — U+2019 (`'`) vs U+0027 (`'`)
+//   2. Misclassifying "can't go wrong with X" as avoidance because
+//      `can't` was blindly flagged as a negative keyword.
+
+// Phase 1 — unmistakably POSITIVE phrases (override any negation words)
+const POSITIVE_OVERRIDE_PATTERN = /can\u2019t go wrong|can't go wrong|won\u2019t be disappointed|won't be disappointed|won\u2019t regret|won't regret|won\u2019t have any trouble|won't have any trouble|particularly happy|you\u2019ll find a good|you'll find a good|best bet|ideal match|great couple|perfect mate|blissfully|harmonious|recommended match|advised to seek|i see you with|you get on with|good match|fine mate|happy alliance|harmony incarnate|sound love|durable|solid relationship|enduring love|great passion|not to be excluded|can\u2019t resist|can't resist|you\u2019ll be particularly|you'll be particularly|won\u2019t have any trouble cohabiting|won't have any trouble cohabiting|excellent|will be happy/gi;
+
+// Phase 2 — unmistakably NEGATIVE phrases (only checked if Phase 1 failed)
+const CLEAR_AVOID_PATTERN = /stay away|avoid|shun|give wide berth|flee|poison|disastrous|don\u2019t pick|don't pick|don\u2019t marry|don't marry|don\u2019t go getting|don't go getting|don\u2019t bother with|don't bother with|don\u2019t go getting yourself involved|don't go getting yourself involved|refrain|leave.*alone|leave.*if you can|too.*(?:cool to keep|heady)|unnerve|exasperate|overpower|not to be trusted|beware|watch out for|too like you.*too.*different|worse than.*bark|won\u2019t last|won't last|won\u2019t work|won't work|never work|dissonance|ugly duo|no marriage|not for you|bite is worse/gi;
 
 function codifySuzanneWhite(
   sourceText: string,
@@ -560,9 +578,6 @@ function codifySuzanneWhite(
   const lowerAnimal = partnerAnimal.toLowerCase();
 
   // Split text into sentences for per-sentence classification.
-  // This avoids the fundamental flaw of splitting at a single
-  // boundary point — a sign can appear in a positive sentence
-  // AND a negative sentence in the same paragraph.
   const sentences = lower.match(/[^.!?]+[.!?]+/g) || [lower];
 
   let appreciationWestern = false;
@@ -575,47 +590,71 @@ function codifySuzanneWhite(
   const dissatisfactionDetails: string[] = [];
 
   for (const sentence of sentences) {
-    const hasAvoid = AVOID_SENTENCE_PATTERN.test(sentence);
-    // Reset lastIndex for each iteration (gi flag)
-    AVOID_SENTENCE_PATTERN.lastIndex = 0;
-
     const hasCombined = sentence.includes(lowerCombined);
     const hasWestern = sentence.includes(lowerWestern);
     const hasAnimal = sentence.includes(lowerAnimal);
 
     if (!hasWestern && !hasAnimal && !hasCombined) continue;
 
-    if (hasAvoid) {
-      // This sentence contains avoidance/caution language AND mentions
-      // the partner's sign(s) → classified as dissatisfaction
-      if (hasCombined) {
-        dissatisfactionCombined = true;
-        dissatisfactionDetails.push(`${partnerCombinedSign} is discouraged ("${sentence.trim().slice(0, 60)}…")`);
-      } else {
-        if (hasWestern) {
-          dissatisfactionWestern = true;
-          dissatisfactionDetails.push(`${partnerWestern} appears in a caution sentence ("${sentence.trim().slice(0, 60)}…")`);
-        }
-        if (hasAnimal) {
-          dissatisfactionAnimal = true;
-          dissatisfactionDetails.push(`${partnerAnimal} appears in a caution sentence ("${sentence.trim().slice(0, 60)}…")`);
-        }
-      }
-    } else {
-      // This sentence has NO avoidance language AND mentions the
-      // partner's sign(s) → classified as appreciation
+    // Phase 1: Check for positive override FIRST.
+    // "Can't go wrong with Capricorn/Ox" is a recommendation,
+    // not a caution, so it must override the `can't` negation word.
+    POSITIVE_OVERRIDE_PATTERN.lastIndex = 0;
+    const hasPositiveOverride = POSITIVE_OVERRIDE_PATTERN.test(sentence);
+
+    if (hasPositiveOverride) {
       if (hasCombined) {
         appreciationCombined = true;
-        appreciationDetails.push(`${partnerCombinedSign} is recommended ("${sentence.trim().slice(0, 60)}…")`);
+        appreciationDetails.push(`${partnerCombinedSign} is recommended ("${sentence.trim().slice(0, 80)}…")`);
       } else {
         if (hasWestern) {
           appreciationWestern = true;
-          appreciationDetails.push(`${partnerWestern} appears in a recommendation ("${sentence.trim().slice(0, 60)}…")`);
+          appreciationDetails.push(`${partnerWestern} appears in a recommendation ("${sentence.trim().slice(0, 80)}…")`);
         }
         if (hasAnimal) {
           appreciationAnimal = true;
-          appreciationDetails.push(`${partnerAnimal} appears in a recommendation ("${sentence.trim().slice(0, 60)}…")`);
+          appreciationDetails.push(`${partnerAnimal} appears in a recommendation ("${sentence.trim().slice(0, 80)}…")`);
         }
+      }
+      continue; // Positive override wins — skip Phase 2 for this sentence
+    }
+
+    // Phase 2: Check for clear avoidance/caution phrases.
+    CLEAR_AVOID_PATTERN.lastIndex = 0;
+    const hasAvoid = CLEAR_AVOID_PATTERN.test(sentence);
+
+    if (hasAvoid) {
+      if (hasCombined) {
+        dissatisfactionCombined = true;
+        dissatisfactionDetails.push(`${partnerCombinedSign} is cautioned against ("${sentence.trim().slice(0, 80)}…")`);
+      } else {
+        if (hasWestern) {
+          dissatisfactionWestern = true;
+          dissatisfactionDetails.push(`${partnerWestern} appears in a caution ("${sentence.trim().slice(0, 80)}…")`);
+        }
+        if (hasAnimal) {
+          dissatisfactionAnimal = true;
+          dissatisfactionDetails.push(`${partnerAnimal} appears in a caution ("${sentence.trim().slice(0, 80)}…")`);
+        }
+      }
+      continue;
+    }
+
+    // Neither positive override nor clear avoidance — the sentence is
+    // neutral (e.g. "Ox gives you competition but you don't mind that").
+    // We still classify a sign mention as mild appreciation because it
+    // appears in a sentence that is NOT explicitly cautioning against it.
+    if (hasCombined) {
+      appreciationCombined = true;
+      appreciationDetails.push(`${partnerCombinedSign} mentioned favourably ("${sentence.trim().slice(0, 80)}…")`);
+    } else {
+      if (hasWestern) {
+        appreciationWestern = true;
+        appreciationDetails.push(`${partnerWestern} mentioned favourably ("${sentence.trim().slice(0, 80)}…")`);
+      }
+      if (hasAnimal) {
+        appreciationAnimal = true;
+        appreciationDetails.push(`${partnerAnimal} mentioned favourably ("${sentence.trim().slice(0, 80)}…")`);
       }
     }
   }
