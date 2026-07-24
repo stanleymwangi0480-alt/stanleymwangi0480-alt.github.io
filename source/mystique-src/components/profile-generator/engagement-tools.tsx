@@ -2491,7 +2491,7 @@ function ChineseZodiacCompatTextCard({ report }: { report: SoulResonanceReport }
   // Sentence-splitting for SpeechPlayer pacing
   const sentences = React.useMemo(() => {
     if (!text) return [""];
-    const matches = text.match(/[^.!?\\n]+[.!?\\n]+/g);
+    const matches = text.match(/[^.!?\n]+[.!?\n]+/g);
     return matches || [text];
   }, [text]);
   const [, setActiveSentenceIndex] = React.useState(-1);
@@ -2578,14 +2578,14 @@ function NewAstrologyCompatCard({ report }: { report: SoulResonanceReport }) {
   // Sentence-splitting for both paragraphs
   const aSentences = React.useMemo(() => {
     if (!na.aCompatText) return [""];
-    const matches = na.aCompatText.match(/[^.!?\\n]+[.!?\\n]+/g);
+    const matches = na.aCompatText.match(/[^.!?\n]+[.!?\n]+/g);
     return matches || [na.aCompatText];
   }, [na.aCompatText]);
   const [, setAActiveSentence] = React.useState(-1);
 
   const bSentences = React.useMemo(() => {
     if (!na.bCompatText) return [""];
-    const matches = na.bCompatText.match(/[^.!?\\n]+[.!?\\n]+/g);
+    const matches = na.bCompatText.match(/[^.!?\n]+[.!?\n]+/g);
     return matches || [na.bCompatText];
   }, [na.bCompatText]);
   const [, setBActiveSentence] = React.useState(-1);
