@@ -23,7 +23,7 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
     <!-- Used by the service worker to tell a real app-shell response apart from impostor pages -->
-    <meta name="mystique-app-shell" content="v54" />
+    <meta name="mystique-app-shell" content="v55" />
 
     <!-- PWA -->
     <link rel="manifest" href="/manifest.json" />
@@ -67,88 +67,89 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebApplication",
-      "name": "Mystique Compass",
-      "url": "https://mystique-compass.pages.dev/",
-      "description": "Free numerology calculator & cosmic profile generator. Life Path number, Psychomatrix, Loshu Grid, Chinese Zodiac, Western astrology, and personal year forecast — all in one app.",
-      "applicationCategory": "LifestyleApplication",
-      "operatingSystem": "Web",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "USD"
-      },
-      "browserRequirements": "Requires JavaScript. Requires HTML5.",
-      "softwareVersion": "50",
-      "installUrl": "https://mystique-compass.pages.dev/",
-      "screenshot": "https://mystique-compass.pages.dev/opengraph.jpg",
-      "featureList": "Life Path Number, Psychomatrix Chart, Loshu Grid Analysis, Chinese Zodiac, Western Astrology Profile, Personal Year Forecast, Compatibility Checker, PDF Export, PWA Install",
-      "creator": {
-        "@type": "Person",
-        "name": "Stanley Mwangi"
-      }
-    }
-    </script>
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": [
+      "@graph": [
         {
-          "@type": "Question",
-          "name": "Is Mystique Compass free?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Yes — completely free. No sign-up, no paywalls, no hidden fees. All features are available to everyone."
+          "@type": "WebApplication",
+          "name": "Mystique Compass",
+          "url": "https://mystique-compass.pages.dev/",
+          "description": "Free numerology calculator & cosmic profile generator. Life Path number, Psychomatrix, Loshu Grid, Chinese Zodiac, Western astrology, and personal year forecast — all in one app.",
+          "applicationCategory": "LifestyleApplication",
+          "operatingSystem": "Web",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+          },
+          "browserRequirements": "Requires JavaScript. Requires HTML5.",
+          "softwareVersion": "54",
+          "installUrl": "https://mystique-compass.pages.dev/",
+          "screenshot": "https://mystique-compass.pages.dev/opengraph.jpg",
+          "featureList": "Life Path Number, Psychomatrix Chart, Loshu Grid Analysis, Chinese Zodiac, Western Astrology Profile, Personal Year Forecast, Compatibility Checker, PDF Export, PWA Install",
+          "creator": {
+            "@type": "Person",
+            "name": "Stanley Mwangi"
           }
         },
         {
-          "@type": "Question",
-          "name": "How do I calculate my Life Path number?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Your Life Path number is derived by reducing your full date of birth to a single digit (or master number 11, 22, 33). Mystique Compass does this automatically when you enter your birthday."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "What is a Psychomatrix chart?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "The Psychomatrix (also called the Pythagorean square) is a 3×3 grid where each cell represents a personality trait — character, energy, interest, health, logic, work, luck, duty, and memory. The number of dots in each cell shows how strongly that trait is expressed."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "What is a Loshu Grid?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "The Loshu Grid is a Vedic numerology tool that maps the digits of your birth date into a 3×3 magic square. It reveals which numbers (and their associated planets) are strong or missing in your life, and offers remedies for balancing weak areas."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "What is a Personal Year in numerology?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "A Personal Year is a numerological cycle that changes each calendar year. It ranges from 1 (new beginnings) through 9 (completion) and reveals the dominant theme of your current year — helping you align your decisions with the energy of the cycle."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Does Mystique Compass work offline?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Yes. When you install it as a PWA (Progressive Web App), it works offline after the first load. Your profile data stays on your device — nothing is sent to a server."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Is my data private?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Yes. All calculations happen in your browser. No personal data is stored on any server. The app uses anonymous analytics (a random device ID, no name or email) to track usage patterns only."
-          }
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Is Mystique Compass free?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes — completely free. No sign-up, no paywalls, no hidden fees. All features are available to everyone."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How do I calculate my Life Path number?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Your Life Path number is derived by reducing your full date of birth to a single digit (or master number 11, 22, 33). Mystique Compass does this automatically when you enter your birthday."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What is a Psychomatrix chart?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "The Psychomatrix (also called the Pythagorean square) is a 3×3 grid where each cell represents a personality trait — character, energy, interest, health, logic, work, luck, duty, and memory. The number of dots in each cell shows how strongly that trait is expressed."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What is a Loshu Grid?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "The Loshu Grid is a Vedic numerology tool that maps the digits of your birth date into a 3×3 magic square. It reveals which numbers (and their associated planets) are strong or missing in your life, and offers remedies for balancing weak areas."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What is a Personal Year in numerology?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "A Personal Year is a numerological cycle that changes each calendar year. It ranges from 1 (new beginnings) through 9 (completion) and reveals the dominant theme of your current year — helping you align your decisions with the energy of the cycle."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Does Mystique Compass work offline?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. When you install it as a PWA (Progressive Web App), it works offline after the first load. Your profile data stays on your device — nothing is sent to a server."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is my data private?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes. All calculations happen in your browser. No personal data is stored on any server. The app uses anonymous analytics (a random device ID, no name or email) to track usage patterns only."
+              }
+            }
+          ]
         }
       ]
     }
