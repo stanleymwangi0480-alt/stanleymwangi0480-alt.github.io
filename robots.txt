@@ -2,4 +2,3 @@ User-agent: *
 Allow: /
 
 Sitemap: https://mystique-compass.pages.dev/sitemap.xml
-Sitemap: https://stanleymwangi0480-alt.github.io/sitemap.xml
