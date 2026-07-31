@@ -23,7 +23,7 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
 
     <!-- Used by the service worker to tell a real app-shell response apart from impostor pages -->
-    <meta name="mystique-app-shell" content="v51" />
+    <meta name="mystique-app-shell" content="v52" />
 
     <!-- PWA -->
     <link rel="manifest" href="/manifest.json" />
@@ -158,55 +158,66 @@
   </head>
   <body>
     <div id="root"></div>
+
+    <!--
+      SEO content: visible to Google's crawler (which renders JavaScript),
+      but visually hidden from users who see the React app instead.
+      This content MUST be in the DOM (not just <noscript>) for Google's
+      FAQPage structured data to be valid — Google requires FAQ content
+      to be present in the page's rendered DOM.
+    -->
+    <div style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap" aria-hidden="true">
+      <h1>Mystique Compass — Free Numerology Calculator &amp; Cosmic Profile Generator</h1>
+      <p>Mystique Compass is a free online app that reveals your complete cosmic profile through numerology, psychomatrix, Loshu Grid, Chinese Zodiac, Western astrology, and personal year forecasts. Enter your birth date and get instant, detailed insights — no sign-up or payment required.</p>
+
+      <h2>What You Get</h2>
+      <ul>
+        <li><strong>Life Path Number</strong> — your core destiny number calculated from your date of birth</li>
+        <li><strong>Psychomatrix Chart</strong> — a 3×3 grid revealing your character, willpower, energy, logic, and more</li>
+        <li><strong>Loshu Grid Analysis</strong> — Vedic numerology grid mapping your strengths and missing elements</li>
+        <li><strong>Chinese Zodiac Sign</strong> — your animal sign, element, and compatibility with other signs</li>
+        <li><strong>Western Astrology Profile</strong> — sun sign, moon sign, rising sign, and planetary influences</li>
+        <li><strong>Personal Year Forecast</strong> — what the current year holds for you based on numerological cycles</li>
+        <li><strong>Compatibility Checker</strong> — compare two profiles for friendship, love, or business compatibility</li>
+      </ul>
+
+      <h2>How It Works</h2>
+      <ol>
+        <li>Enter your date of birth on the home screen</li>
+        <li>Mystique Compass instantly calculates your full numerology and astrology profile</li>
+        <li>Explore each section: Life Path, Psychomatrix, Loshu Grid, Zodiac signs, and personal year</li>
+        <li>Share your profile or download it as a PDF</li>
+      </ol>
+
+      <h2>Frequently Asked Questions</h2>
+
+      <h3>Is Mystique Compass free?</h3>
+      <p>Yes — completely free. No sign-up, no paywalls, no hidden fees. All features are available to everyone.</p>
+
+      <h3>How do I calculate my Life Path number?</h3>
+      <p>Your Life Path number is derived by reducing your full date of birth to a single digit (or master number 11, 22, 33). Mystique Compass does this automatically when you enter your birthday.</p>
+
+      <h3>What is a Psychomatrix chart?</h3>
+      <p>The Psychomatrix (also called the Pythagorean square) is a 3×3 grid where each cell represents a personality trait — character, energy, interest, health, logic, work, luck, duty, and memory. The number of dots in each cell shows how strongly that trait is expressed.</p>
+
+      <h3>What is a Loshu Grid?</h3>
+      <p>The Loshu Grid is a Vedic numerology tool that maps the digits of your birth date into a 3×3 magic square. It reveals which numbers (and their associated planets) are strong or missing in your life, and offers remedies for balancing weak areas.</p>
+
+      <h3>What is a Personal Year in numerology?</h3>
+      <p>A Personal Year is a numerological cycle that changes each calendar year. It ranges from 1 (new beginnings) through 9 (completion) and reveals the dominant theme of your current year — helping you align your decisions with the energy of the cycle.</p>
+
+      <h3>Does Mystique Compass work offline?</h3>
+      <p>Yes. When you install it as a PWA (Progressive Web App), it works offline after the first load. Your profile data stays on your device — nothing is sent to a server.</p>
+
+      <h3>Is my data private?</h3>
+      <p>Yes. All calculations happen in your browser. No personal data is stored on any server. The app uses anonymous analytics (a random device ID, no name or email) to track usage patterns only.</p>
+    </div>
+
     <noscript>
-      <article style="max-width:720px;margin:0 auto;padding:2rem 1.5rem;font-family:system-ui,sans-serif;color:#e0d8f0;background:#0e0a1a;min-height:100vh">
-        <h1 style="font-size:1.6rem;color:#d4af37;margin-bottom:0.5rem">Mystique Compass — Free Numerology Calculator &amp; Cosmic Profile Generator</h1>
-        <p style="font-size:1.05rem;line-height:1.65;margin-bottom:1rem">Mystique Compass is a free online app that reveals your complete cosmic profile through <strong>numerology</strong>, <strong>psychomatrix</strong>, <strong>Loshu Grid</strong>, <strong>Chinese Zodiac</strong>, <strong>Western astrology</strong>, and <strong>personal year forecasts</strong>. Enter your birth date and get instant, detailed insights — no sign-up or payment required.</p>
-
-        <h2 style="font-size:1.15rem;color:#c4b5fd;margin-top:1.5rem;margin-bottom:0.4rem">What You Get</h2>
-        <ul style="padding-left:1.2rem;line-height:1.7">
-          <li><strong>Life Path Number</strong> — your core destiny number calculated from your date of birth</li>
-          <li><strong>Psychomatrix Chart</strong> — a 3×3 grid revealing your character, willpower, energy, logic, and more</li>
-          <li><strong>Loshu Grid Analysis</strong> — Vedic numerology grid mapping your strengths and missing elements</li>
-          <li><strong>Chinese Zodiac Sign</strong> — your animal sign, element, and compatibility with other signs</li>
-          <li><strong>Western Astrology Profile</strong> — sun sign, moon sign, rising sign, and planetary influences</li>
-          <li><strong>Personal Year Forecast</strong> — what the current year holds for you based on numerological cycles</li>
-          <li><strong>Compatibility Checker</strong> — compare two profiles for friendship, love, or business compatibility</li>
-        </ul>
-
-        <h2 style="font-size:1.15rem;color:#c4b5fd;margin-top:1.5rem;margin-bottom:0.4rem">How It Works</h2>
-        <ol style="padding-left:1.2rem;line-height:1.7">
-          <li>Enter your date of birth on the home screen</li>
-          <li>Mystique Compass instantly calculates your full numerology and astrology profile</li>
-          <li>Explore each section: Life Path, Psychomatrix, Loshu Grid, Zodiac signs, and personal year</li>
-          <li>Share your profile or download it as a PDF</li>
-        </ol>
-
-        <h2 style="font-size:1.15rem;color:#c4b5fd;margin-top:1.5rem;margin-bottom:0.4rem">Frequently Asked Questions</h2>
-
-        <h3 style="font-size:1rem;color:#d4af37;margin-top:1rem">Is Mystique Compass free?</h3>
-        <p style="line-height:1.6">Yes — completely free. No sign-up, no paywalls, no hidden fees. All features are available to everyone.</p>
-
-        <h3 style="font-size:1rem;color:#d4af37;margin-top:1rem">How do I calculate my Life Path number?</h3>
-        <p style="line-height:1.6">Your Life Path number is derived by reducing your full date of birth to a single digit (or master number 11, 22, 33). Mystique Compass does this automatically when you enter your birthday.</p>
-
-        <h3 style="font-size:1rem;color:#d4af37;margin-top:1rem">What is a Psychomatrix chart?</h3>
-        <p style="line-height:1.6">The Psychomatrix (also called the Pythagorean square) is a 3×3 grid where each cell represents a personality trait — character, energy, interest, health, logic, work, luck, duty, and memory. The number of dots in each cell shows how strongly that trait is expressed.</p>
-
-        <h3 style="font-size:1rem;color:#d4af37;margin-top:1rem">What is a Loshu Grid?</h3>
-        <p style="line-height:1.6">The Loshu Grid is a Vedic numerology tool that maps the digits of your birth date into a 3×3 magic square. It reveals which numbers (and their associated planets) are strong or missing in your life, and offers remedies for balancing weak areas.</p>
-
-        <h3 style="font-size:1rem;color:#d4af37;margin-top:1rem">What is a Personal Year in numerology?</h3>
-        <p style="line-height:1.6">A Personal Year is a numerological cycle that changes each calendar year. It ranges from 1 (new beginnings) through 9 (completion) and reveals the dominant theme of your current year — helping you align your decisions with the energy of the cycle.</p>
-
-        <h3 style="font-size:1rem;color:#d4af37;margin-top:1rem">Does Mystique Compass work offline?</h3>
-        <p style="line-height:1.6">Yes. When you install it as a PWA (Progressive Web App), it works offline after the first load. Your profile data stays on your device — nothing is sent to a server.</p>
-
-        <h3 style="font-size:1rem;color:#d4af37;margin-top:1rem">Is my data private?</h3>
-        <p style="line-height:1.6">Yes. All calculations happen in your browser. No personal data is stored on any server. The app uses anonymous analytics (a random device ID, no name or email) to track usage patterns only.</p>
-
-        <p style="margin-top:1.5rem;font-size:0.85rem;color:rgba(196,181,253,0.5)">Please enable JavaScript to use the full interactive experience.</p>
-      </article>
+      <div style="text-align: center; padding: 20px; font-family: sans-serif; color: white; background: #04001a; height: 100vh; display: flex; align-items: center; justify-content: center;">
+        <h1>Mystique Compass — Free Numerology Calculator &amp; Cosmic Profile Generator</h1>
+        <p>Discover your destiny with accurate Numerology, Psychomatrix, Loshu Grid, Chinese Zodiacs, and Astrology profiles. Please enable JavaScript to use the app.</p>
+      </div>
     </noscript>
   </body>
 </html>
