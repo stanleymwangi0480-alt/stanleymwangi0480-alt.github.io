@@ -225,14 +225,11 @@
 <script>
   // ─── SECURITY CONFIGURATION ───
   //
-  // PAGE_TOKEN: A secret string that gates access to this dashboard page itself.
-  // It must match what is set in Cloudflare on the mystique-analytics worker
-  // under the name PAGE_TOKEN. Changing it here requires changing it there too.
-  //
-  // The default below is intentionally invalid so the dashboard will not open
-  // until you set a real token. Replace "CHANGE_ME_IN_CLOUDFLARE_AND_HERE" with
-  // a long random string (at least 32 characters recommended).
-  const PAGE_TOKEN = 'Newcreation2017';
+  // PAGE_TOKEN_HASH: SHA-256 hash of the page access token.
+  // The raw token is NEVER stored in client-side code — only its hash.
+  // This prevents anyone from reading the token via View Source.
+  // Verification uses SubtleCrypto (async SHA-256) to compare hashes.
+  const PAGE_TOKEN_HASH = '27c71e7be081022d8426790b06f7ec9a869323c00860aeaf10199a10974defba';
 
   // Rate-limit constants (client-side enforcement; also enforced server-side
   // by the worker's ADMIN_KEY check, but this adds a UX-friendly lockout).
@@ -245,16 +242,13 @@
   const ATTEMPTS_KEY = 'mystique-analytics-dashboard-attempts';
   const GATE_KEY = 'mystique-analytics-dashboard-gated';
 
-  // ─── HASH HELPER (deterministic, no external crypto) ───
-  // Uses a simple non-cryptographic hash for the page-token comparison.
-  // The real protection is the Cloudflare ADMIN_KEY on the worker endpoint;
-  // this just prevents casual browsing of the dashboard page.
-  function simpleHash(str) {
-    let h = 0;
-    for (let i = 0; i < str.length; i++) {
-      h = ((h << 5) - h + str.charCodeAt(i)) | 0;
-    }
-    return h.toString(36);
+  // ─── SHA-256 HELPER (uses SubtleCrypto, never falls back to plaintext) ───
+  async function sha256(str) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(str);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
   // ─── PAGE TOKEN GATE ───
@@ -283,7 +277,7 @@
     localStorage.setItem(ATTEMPTS_KEY, JSON.stringify(data));
   }
 
-  function verifyPageToken() {
+  async function verifyPageToken() {
     const input = document.getElementById('pageToken').value.trim();
     if (!input) { alert('Please enter the page access token.'); return; }
 
@@ -295,14 +289,20 @@
       return;
     }
 
-    if (input === PAGE_TOKEN) {
-      // Success — clear attempts and persist gate
-      localStorage.removeItem(ATTEMPTS_KEY);
-      localStorage.setItem(GATE_KEY, '1');
-      document.getElementById('gate').style.display = 'none';
-      initDashboard();
-    } else {
-      // Failed attempt
+    // Compare SHA-256 hash instead of raw token — token never appears in source
+    try {
+      const inputHash = await sha256(input);
+      if (inputHash === PAGE_TOKEN_HASH) {
+        // Success — clear attempts and persist gate (store hash prefix, not token)
+        localStorage.removeItem(ATTEMPTS_KEY);
+        localStorage.setItem(GATE_KEY, PAGE_TOKEN_HASH.slice(0, 16));
+        document.getElementById('gate').style.display = 'none';
+        initDashboard();
+      } else {
+        throw new Error('mismatch');
+      }
+    } catch {
+      // Failed attempt (hash mismatch or crypto error)
       const updated = recordAttempt();
       if (updated.count >= MAX_FAILED_ATTEMPTS) {
         lockout(LOCKOUT_DURATION_MS / 1000);
@@ -381,7 +381,9 @@
     document.getElementById('stats-content').style.display = 'none';
 
     try {
-      const res = await fetch(`${config.workerUrl}/stats?key=${encodeURIComponent(config.adminKey)}`);
+      const res = await fetch(`${config.workerUrl}/stats`, {
+        headers: { 'Authorization': `Bearer ${config.adminKey}` }
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${res.status}`);
@@ -429,7 +431,7 @@
   // ─── INIT ───
   (function init() {
     // If already gated this session, skip the page token form
-    if (localStorage.getItem(GATE_KEY) === '1' && PAGE_TOKEN !== 'CHANGE_ME_IN_CLOUDFLARE_AND_HERE') {
+    if (localStorage.getItem(GATE_KEY) === PAGE_TOKEN_HASH.slice(0, 16)) {
       document.getElementById('gate').style.display = 'none';
       initDashboard();
     } else {
