@@ -152,12 +152,14 @@
   .bar-row .bar-fill { height: 100%; background: var(--gold); border-radius: 4px; }
   .bar-row .bar-count { width: 34px; text-align: right; color: var(--text-dim); }
   .error { color: var(--danger); font-size: 0.8rem; text-align: center; margin-top: 1rem; }
+  .success-msg { color: var(--success); font-size: 0.8rem; text-align: center; margin-top: 1rem; }
   .loading { text-align: center; color: var(--text-dim); font-size: 0.85rem; padding: 2rem 0; }
   .meta-note { font-size: 0.68rem; color: var(--text-dim); text-align: center; margin-top: 1.5rem; }
   .lockout-msg { color: var(--danger); text-align: center; padding: 1.5rem 0; font-size: 0.9rem; }
   .page-token-field { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); }
   .page-token-field label { color: var(--danger); }
   .page-token-field input { border-color: var(--danger); }
+  .hint { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.5rem; line-height: 1.5; }
 </style>
 </head>
 <body>
@@ -172,15 +174,23 @@
       <label for="pageToken">Page Access Token</label>
       <input id="pageToken" type="password" placeholder="Enter the page access token" />
       <button onclick="verifyPageToken()">Access Dashboard</button>
+      <div class="hint">
+        Enter the page access token that was set when the dashboard was deployed.
+        If you've forgotten it, check your deployment configuration.
+      </div>
     </div>
   </div>
 
   <div id="setup" class="setup-card" style="display:none;">
     <label for="workerUrl">Analytics Worker URL</label>
-    <input id="workerUrl" placeholder="https://mystique-analytics.your-name.workers.dev" />
+    <input id="workerUrl" value="https://mystique-analytics.sksalemking.workers.dev" placeholder="https://mystique-analytics.your-name.workers.dev" />
     <label for="adminKey">Admin Key</label>
-    <input id="adminKey" type="password" placeholder="the key from wrangler secret put ADMIN_KEY" />
+    <input id="adminKey" type="password" placeholder="The admin key (set via wrangler secret put ADMIN_KEY)" />
     <button onclick="saveConfig()">Connect</button>
+    <div class="hint">
+      The Admin Key is the secret you set on the Cloudflare Worker with
+      <code>wrangler secret put ADMIN_KEY</code>. It authorizes reading the stats endpoint.
+    </div>
   </div>
 
   <div id="dashboard" style="display:none;">
@@ -230,6 +240,7 @@
   // This prevents anyone from reading the token via View Source.
   // Verification uses SubtleCrypto (async SHA-256) to compare hashes.
   const PAGE_TOKEN_HASH = '27c71e7be081022d8426790b06f7ec9a869323c00860aeaf10199a10974defba';
+  const GATE_PASS_VALUE = PAGE_TOKEN_HASH.slice(0, 16); // stored in localStorage when gate passed
 
   // Rate-limit constants (client-side enforcement; also enforced server-side
   // by the worker's ADMIN_KEY check, but this adds a UX-friendly lockout).
@@ -242,13 +253,18 @@
   const ATTEMPTS_KEY = 'mystique-analytics-dashboard-attempts';
   const GATE_KEY = 'mystique-analytics-dashboard-gated';
 
-  // ─── SHA-256 HELPER (uses SubtleCrypto, never falls back to plaintext) ───
+  // ─── SHA-256 HELPER ───
+  // Uses SubtleCrypto (available in all modern browsers over HTTPS).
+  // Both Cloudflare Pages and GitHub Pages enforce HTTPS, so this always works.
   async function sha256(str) {
+    if (!crypto || !crypto.subtle) {
+      throw new Error('crypto.subtle unavailable — this page requires HTTPS');
+    }
     const encoder = new TextEncoder();
     const data = encoder.encode(str);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashArray.map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
   }
 
   // ─── PAGE TOKEN GATE ───
@@ -277,6 +293,15 @@
     localStorage.setItem(ATTEMPTS_KEY, JSON.stringify(data));
   }
 
+  function clearLockout() {
+    localStorage.removeItem(ATTEMPTS_KEY);
+    localStorage.removeItem(GATE_KEY);
+    document.getElementById('lockout').style.display = 'none';
+    document.getElementById('gate-form').style.display = 'block';
+    document.getElementById('pageToken').value = '';
+    document.getElementById('pageToken').focus();
+  }
+
   async function verifyPageToken() {
     const input = document.getElementById('pageToken').value.trim();
     if (!input) { alert('Please enter the page access token.'); return; }
@@ -285,41 +310,48 @@
     const attempts = getAttempts();
     if (Date.now() < attempts.lockoutUntil) {
       const remaining = Math.ceil((attempts.lockoutUntil - Date.now()) / 1000);
-      showLockout(`Too many failed attempts. Try again in ${remaining} seconds.`);
+      showLockout('Too many failed attempts. Try again in ' + remaining + ' seconds.');
       return;
     }
 
-    // Compare SHA-256 hash instead of raw token — token never appears in source
+    // Compare SHA-256 hash — the raw token never appears in source code
     try {
       const inputHash = await sha256(input);
       if (inputHash === PAGE_TOKEN_HASH) {
-        // Success — clear attempts and persist gate (store hash prefix, not token)
+        // Success — clear attempts and persist gate
         localStorage.removeItem(ATTEMPTS_KEY);
-        localStorage.setItem(GATE_KEY, PAGE_TOKEN_HASH.slice(0, 16));
+        localStorage.setItem(GATE_KEY, GATE_PASS_VALUE);
         document.getElementById('gate').style.display = 'none';
         initDashboard();
       } else {
-        throw new Error('mismatch');
+        // Hash mismatch — wrong token
+        handleFailedAttempt();
       }
-    } catch {
-      // Failed attempt (hash mismatch or crypto error)
-      const updated = recordAttempt();
-      if (updated.count >= MAX_FAILED_ATTEMPTS) {
-        lockout(LOCKOUT_DURATION_MS / 1000);
-        showLockout(`Too many failed attempts. Try again in ${LOCKOUT_DURATION_MS / 1000} seconds.`);
-      } else {
-        const errEl = document.getElementById('lockout');
-        errEl.style.display = 'block';
-        errEl.textContent = `Invalid token. ${MAX_FAILED_ATTEMPTS - updated.count} attempts remaining.`;
-        errEl.className = 'error';
-      }
-      document.getElementById('pageToken').value = '';
+    } catch (err) {
+      // Unexpected crypto error — treat as failed attempt
+      console.error('[stats] Token verification error:', err);
+      handleFailedAttempt();
     }
+  }
+
+  function handleFailedAttempt() {
+    const updated = recordAttempt();
+    if (updated.count >= MAX_FAILED_ATTEMPTS) {
+      lockout(LOCKOUT_DURATION_MS / 1000);
+      showLockout('Too many failed attempts. Try again in ' + (LOCKOUT_DURATION_MS / 1000) + ' seconds.');
+    } else {
+      const errEl = document.getElementById('lockout');
+      errEl.style.display = 'block';
+      errEl.textContent = 'Invalid token. ' + (MAX_FAILED_ATTEMPTS - updated.count) + ' attempts remaining.';
+      errEl.className = 'error';
+    }
+    document.getElementById('pageToken').value = '';
+    document.getElementById('pageToken').focus();
   }
 
   function showLockout(msg) {
     document.getElementById('lockout').style.display = 'block';
-    document.getElementById('lockout').textContent = msg;
+    document.getElementById('lockout').innerHTML = msg + '<br/><button class="danger" style="width:auto;margin:1rem auto 0;display:inline-block;padding:0.4rem 1rem;" onclick="clearLockout()">Reset &amp; Try Again</button>';
     document.getElementById('gate-form').style.display = 'none';
   }
 
@@ -358,11 +390,9 @@
     for (const [label, count] of entries) {
       const row = document.createElement('div');
       row.className = 'bar-row';
-      row.innerHTML = `
-        <div class="bar-label">${escapeHtml(label)}</div>
-        <div class="bar-track"><div class="bar-fill" style="width:${(count / max) * 100}%"></div></div>
-        <div class="bar-count">${count}</div>
-      `;
+      row.innerHTML = '<div class="bar-label">' + escapeHtml(label) + '</div>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:' + ((count / max) * 100) + '%"></div></div>' +
+        '<div class="bar-count">' + count + '</div>';
       container.appendChild(row);
     }
   }
@@ -381,12 +411,15 @@
     document.getElementById('stats-content').style.display = 'none';
 
     try {
-      const res = await fetch(`${config.workerUrl}/stats`, {
-        headers: { 'Authorization': `Bearer ${config.adminKey}` }
+      const res = await fetch(config.workerUrl + '/stats', {
+        headers: { 'Authorization': 'Bearer ' + config.adminKey }
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || `HTTP ${res.status}`);
+        const body = await res.json().catch(function() { return {}; });
+        if (res.status === 401) {
+          throw new Error('Unauthorized — the Admin Key is incorrect. Click "Change settings" to update it.');
+        }
+        throw new Error(body.error || 'HTTP ' + res.status);
       }
       const stats = await res.json();
 
@@ -400,14 +433,14 @@
       renderBars('share-bars', stats.shareMethodCounts, false);
 
       document.getElementById('meta-note').textContent =
-        `Scanned ${stats.recordsScanned} of ${stats.totalRawKeysStored} stored batches · generated ${new Date(stats.generatedAt).toLocaleString()}`;
+        'Scanned ' + stats.recordsScanned + ' of ' + stats.totalRawKeysStored + ' stored batches \u00B7 generated ' + new Date(stats.generatedAt).toLocaleString();
 
       document.getElementById('loading').style.display = 'none';
       document.getElementById('stats-content').style.display = 'block';
     } catch (err) {
       document.getElementById('loading').style.display = 'none';
-      const errEl = document.getElementById('error');
-      errEl.textContent = `Couldn't load stats: ${err.message}`;
+      var errEl = document.getElementById('error');
+      errEl.textContent = 'Couldn\'t load stats: ' + err.message;
       errEl.style.display = 'block';
     }
   }
@@ -430,17 +463,28 @@
 
   // ─── INIT ───
   (function init() {
-    // If already gated this session, skip the page token form
-    if (localStorage.getItem(GATE_KEY) === PAGE_TOKEN_HASH.slice(0, 16)) {
+    // Migrate old gate value: if localStorage has the old '1' value, clear it
+    // so the user sees the gate form and can re-authenticate with the new hash.
+    const existingGate = localStorage.getItem(GATE_KEY);
+    if (existingGate === '1') {
+      // Old-format gate from before the security upgrade — clear it
+      localStorage.removeItem(GATE_KEY);
+      // Also clear any stale lockout from failed attempts with old placeholder token
+      localStorage.removeItem(ATTEMPTS_KEY);
+    }
+
+    if (existingGate === GATE_PASS_VALUE) {
+      // Already gated with the new hash format — skip the gate
       document.getElementById('gate').style.display = 'none';
       initDashboard();
     } else {
+      // Show gate form
       document.getElementById('gate').style.display = 'block';
-      // Also check for lockout
-      const attempts = getAttempts();
+      // Check for lockout
+      var attempts = getAttempts();
       if (Date.now() < attempts.lockoutUntil) {
-        const remaining = Math.ceil((attempts.lockoutUntil - Date.now()) / 1000);
-        showLockout(`Too many failed attempts. Try again in ${remaining} seconds.`);
+        var remaining = Math.ceil((attempts.lockoutUntil - Date.now()) / 1000);
+        showLockout('Too many failed attempts. Try again in ' + remaining + ' seconds.');
       }
     }
   })();
