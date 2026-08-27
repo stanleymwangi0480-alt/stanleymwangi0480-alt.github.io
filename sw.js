@@ -1,7 +1,7 @@
-// Bumped again: this version adds detection for same-origin impostor pages
-// (e.g. Replit's cold-workspace placeholder) during navigation, on top of
-// the earlier silent-precache-failure fix.
-const CACHE_NAME = "mystique-compass-v58-shell-guard";
+// Bumped again for the Google Preferred Sources integration. This version
+// keeps the same-origin impostor-page guard and ensures every device receives
+// the latest app shell and CSP policy.
+const CACHE_NAME = "mystique-compass-v59-shell-guard";
 const RUNTIME_CACHE = `${CACHE_NAME}-runtime`;
 
 // Every file the manifest/index.html actually reference, so the offline

@@ -22,10 +22,13 @@
     <meta http-equiv="Permissions-Policy" content="geolocation=(), microphone=(), camera=()" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta http-equiv="X-Frame-Options" content="DENY" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://mystique-analytics.sksalemking.workers.dev https://en.wikipedia.org; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://news.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://mystique-analytics.sksalemking.workers.dev https://en.wikipedia.org https://news.google.com; frame-src https://news.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" />
+
+    <!-- Google Preferred Sources: official reader opt-in button -->
+    <script async src="https://news.google.com/swg/js/v1/publisher.js"></script>
 
     <!-- Used by the service worker to tell a real app-shell response apart from impostor pages -->
-    <meta name="mystique-app-shell" content="v58" />
+    <meta name="mystique-app-shell" content="v59" />
 
     <!-- PWA -->
     <link rel="manifest" href="/manifest.json" />
@@ -83,7 +86,7 @@
             "priceCurrency": "USD"
           },
           "browserRequirements": "Requires JavaScript. Requires HTML5.",
-          "softwareVersion": "54",
+          "softwareVersion": "59",
           "installUrl": "https://mystique-compass.pages.dev/",
           "screenshot": "https://mystique-compass.pages.dev/opengraph.jpg",
           "featureList": "Life Path Number, Psychomatrix Chart, Loshu Grid Analysis, Chinese Zodiac, Western Astrology Profile, Personal Year Forecast, Compatibility Checker, PDF Export, PWA Install",
@@ -156,8 +159,8 @@
       ]
     }
     </script>
-    <script type="module" crossorigin src="/assets/index-DmFnGOdR.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-siUykfMr.css">
+    <script type="module" crossorigin src="/assets/index-DW6FaC27.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-hf28CaNH.css">
   </head>
   <body>
     <div id="root"></div>
