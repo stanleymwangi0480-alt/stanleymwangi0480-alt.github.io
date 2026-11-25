@@ -1,12 +1,9 @@
 /**
  * MYSTIQUE COMPASS — Resilient Wikipedia Biography Fetcher (client-side)
  *
- * WHY THIS EXISTS
- * ────────────────
  * The original flow only called our own `/api/biography` route. That route is
  * served by our api-server. The moment Mystique Compass is installed as a PWA
- * and used standalone — or whenever our hosting (Replit / a static host with
- * no backend / a sleeping free-tier server) is down, redeployed, or simply
+ * and used standalone — or whenever our hosting is down, redeployed, or simply
  * unreachable — that same-origin call fails and the Wikipedia lookup breaks
  * entirely, even though the user's device has a perfectly good internet
  * connection and Wikipedia itself is reachable.
@@ -16,11 +13,6 @@
  * browser. This module ports the exact same parsing logic used by
  * `artifacts/api-server/src/routes/biography.ts` so behaviour stays
  * identical, but it never depends on our own hosting being alive.
- *
- * See `handleWikiSearch()` in `profile-form.tsx` for the calling strategy:
- *   1) try our own `/api/biography` (fast path when the backend is up)
- *   2) on any failure/timeout/non-OK response, fall back to this module,
- *      which talks to Wikipedia directly from the client.
  */
 
 export interface BiographyResult {
@@ -28,8 +20,11 @@ export interface BiographyResult {
   title?: string;
   description?: string;
   birthYear?: number;
-  birthMonth?: number;
-  birthDay?: number;
+  /** null when the source only gives a year. Never silently filled with a
+   *  placeholder day/month: a chart drawn for an invented 1 January is worse
+   *  than no chart at all. */
+  birthMonth?: number | null;
+  birthDay?: number | null;
   gender?: 'male' | 'female';
   wikipediaUrl?: string;
   error?: string;
@@ -37,7 +32,7 @@ export interface BiographyResult {
 
 const WIKI_API = 'https://en.wikipedia.org/w/api.php';
 const USER_AGENT_HEADERS = {
-  'Api-User-Agent': 'MystiqueCompass/1.0 (client-direct; https://github.com/mystique-compass)',
+  'Api-User-Agent': 'MystiqueCompass/1.0 (client-direct; https://github.com/stanleymwangi0480-alt)',
 };
 
 /** Fetch with a hard timeout so a stalled request never hangs the UI. */
@@ -110,7 +105,26 @@ function parseBirthDate(content: string): { year: number | null; month: number |
     }
   }
 
+  // Reject impossible values rather than passing them downstream: a month of
+  // 13 or a day of 32 would otherwise survive into the chart generators.
+  if (birthMonth !== null && (birthMonth < 1 || birthMonth > 12)) birthMonth = null;
+  if (birthDay !== null && (birthDay < 1 || birthDay > 31)) birthDay = null;
+
   return { year: birthYear, month: birthMonth, day: birthDay };
+}
+
+/** True only when the source actually supplied a full, usable date.
+ *  The single gate every caller must use — the previous bug was exactly a
+ *  caller re-deriving this test and getting it wrong. */
+export function hasCompleteBirthDate(r: BiographyResult): boolean {
+  return !!(
+    r.found &&
+    r.birthYear &&
+    r.birthMonth &&
+    r.birthDay &&
+    r.birthMonth >= 1 && r.birthMonth <= 12 &&
+    r.birthDay >= 1 && r.birthDay <= 31
+  );
 }
 
 /**
@@ -162,8 +176,11 @@ export async function fetchWikipediaBiographyDirect(
       title,
       description,
       birthYear,
-      birthMonth: birthMonth ?? 1,
-      birthDay: birthDay ?? 1,
+      // THE FIX: pass the parser's nulls through instead of replacing them with
+      // 1. Callers gate on hasCompleteBirthDate() and ask the user for the
+      // missing day/month rather than charting an invented birthday.
+      birthMonth: birthMonth,
+      birthDay: birthDay,
       gender,
       wikipediaUrl: `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`,
     };
