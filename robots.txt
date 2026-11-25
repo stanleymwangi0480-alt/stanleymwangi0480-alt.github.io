@@ -2,4 +2,8 @@ User-agent: *
 Allow: /
 Disallow: /stats/
 
+# The internal audit report is a developer document, not public content.
+# It is also excluded from indexing at the header level in _headers.
+Disallow: /IMPROVEMENTS_AND_ACCURACY_REPORT.md
+
 Sitemap: https://mystique-compass.pages.dev/sitemap.xml

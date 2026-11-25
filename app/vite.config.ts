@@ -25,8 +25,16 @@ export default defineConfig({
         navigateFallback: '/index.html',
         navigateFallbackDenylist: STATIC_PAGE_PREFIXES,
         cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: true,
+        // ── WHY skipWaiting IS OFF ──────────────────────────────────────────
+        // With skipWaiting() the new SW takes control of open tabs at once.
+        // A tab opened before the deploy then asks for a chunk hash that no
+        // longer exists on the server (Cloudflare Pages serves only the newest
+        // dist/), gets a 404, and the reading breaks with "Couldn't load the
+        // reading engine". Keeping the old SW in control until every tab has
+        // closed means an open tab finishes what it was doing. main.tsx shows
+        // a "refresh available" nudge on updatefound instead.
+        skipWaiting: false,
+        clientsClaim: false,
         importScripts: ['/sw-cleanup.js'],
         runtimeCaching: [
           {
@@ -50,11 +58,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    chunkSizeWarningLimit: 2500,
+    // 2500 was hiding the problem: results-display ships at 1.69 MB and
+    // data-new-astrology at 1.07 MB. Lower the ceiling so the warning fires
+    // again and the next person to touch this sees it.
+    chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {
-        // Split the big interpretation libraries into their own cacheable files
-        // so an app update doesn't force everyone to re-download all the text.
         manualChunks(id) {
           if (id.includes('/src/lib/new-astrology/')) return 'data-new-astrology';
           if (id.includes('/src/lib/zodiac/')) return 'data-chinese-zodiac';
