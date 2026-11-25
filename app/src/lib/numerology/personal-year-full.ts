@@ -20,18 +20,11 @@ export interface PersonalYearResult {
   title: string;
   interpretation: string;
   // ── Classic (pre-reduced-components) system, shown alongside the above ──
-  // Both conventions are genuinely used in numerology practice; the app
-  // surfaces both rather than picking one as "correct." See
-  // computeRawPersonalYearClassic below for the exact difference.
   yearClassic: number;
   rawYearClassic: number;
   titleClassic: string;
   interpretationClassic: string;
   // ── Historical-calibrated dual-essence synthesis ────────────────────────
-  // This is the upgraded prediction layer: Direct essence is interpreted as
-  // the visible/external manifestation field, Classic essence as the older
-  // Chaldean karmic storyline. It adds age modifiers, master-number handling,
-  // danger/karmic alerts, historical calibration and practical prediction maps.
   dualEssence: PersonalYearDualEssenceSynthesis;
   dualEssenceTitle: string;
   dualEssenceSynthesis: string;
@@ -58,7 +51,6 @@ export function reduceNum(n: number): number {
   // Check for a master number at EVERY step of the reduction, not just on the
   // original input — otherwise a value like 38 (3+8=11, then 1+1=2) blows
   // straight through the master number it passes through on its way down.
-  // Once an intermediate sum lands on 11, 22, or 33, the reduction stops there.
   while (val > 9 && val !== 11 && val !== 22 && val !== 33) {
     val = String(val)
       .split("")
@@ -79,13 +71,6 @@ export function reduceToSingleDigit(n: number): number {
   }
   return val;
 }
-/** The unreduced compound Personal Year total for ANY target year — not just
- * the current one. Birth day and birth month go in AS-IS (day 28 stays 28,
- * not pre-reduced to 1), summed with that year's one-pass digit sum.
- * This is the single source of truth every Personal-Year-adjacent feature
- * in the app (the current-year summary, the multi-year cycle chart, the
- * compound-number lookup, zodiac transits, etc.) should call instead of
- * re-deriving its own copy. */
 export function computeRawPersonalYear(
   birthDay: number,
   birthMonth: number,
@@ -93,7 +78,6 @@ export function computeRawPersonalYear(
 ): number {
   return birthDay + birthMonth + digitSumOnce(forYear);
 }
-/** Final single-digit/master-number Personal Year for any target year. */
 export function computePersonalYearNumber(
   birthDay: number,
   birthMonth: number,
@@ -101,27 +85,11 @@ export function computePersonalYearNumber(
 ): number {
   return reduceNum(computeRawPersonalYear(birthDay, birthMonth, forYear));
 }
-/** The CLASSIC compound Personal Year total: birth day and birth month
- * are expressed as a one-pass digit sum (digitSumOnce, so two-digit days
- * like 29 stay as 11 rather than collapsing further), while the year is
- * reduced ALL THE WAY to a single digit (1-9), bypassing master numbers.
- * Using reduceToSingleDigit for the year prevents years like 2027
- * (2+0+2+7=11) from stopping at the master number 11 and inflating the
- * raw total — in the classic system the year always contributes 1-9 only.
- * Examples:
- * Born 8 Sep (8/9), year 2027: digitSumOnce(8)=8, digitSumOnce(9)=9,
- * reduceToSingleDigit(2027)=2+0+2+7=11→1+1=2 → raw=8+9+2=19/1 ✓
- * Born 29 Sep (29/9), year 2026: digitSumOnce(29)=11, digitSumOnce(9)=9,
- * reduceToSingleDigit(2026)=2+0+2+6=10→1+0=1 → raw=11+9+1=21/3 ✓
- * The app shows this system alongside the "direct" (unreduced-components)
- * approach, rather than treating one as more correct than the other. */
 export function computeRawPersonalYearClassic(
   birthDay: number,
   birthMonth: number,
   forYear: number,
 ): number {
-  // digitSumOnce for day and month (preserves compounds like 11 from day 29),
-  // reduceToSingleDigit for year (bypasses master numbers — year always 1-9).
   return (
     digitSumOnce(birthDay) +
     digitSumOnce(birthMonth) +
@@ -138,9 +106,6 @@ export function computePersonalYearNumberClassic(
   );
 }
 function compoundYearText(c: ChaldeanPYNCompound, raw: number): string {
-  // Use the app's Personal-Year reduction for display, preserving master
-  // numbers that appear during reduction (e.g. 38 → 11, not 2). The dictionary
-  // still keeps c.reduced for classical Chaldean root reference.
   const displayReduced = reduceNum(raw);
   const rootNote =
     displayReduced !== c.reduced ? ` (classical root ${c.reduced})` : "";
@@ -253,8 +218,6 @@ const MASTER_YEAR_NOTES: Record<number, string> = {
   22: `MASTER YEAR 22 — The Master Builder Year\n\nIn the master 22 year, the 4's discipline operates at the scale of legacy: institutions, platforms, and foundations intended to outlast you. Cheiro's compound reading warns of illusion, delusion, and a good person misled by the folly of others — verify every foundation before adding weight. The year's instruction is to build, and to audit what you build.\n\n---\nSingle-Digit Foundation (4):\n`,
   33: `MASTER YEAR 33 — The Master Teacher Year\n\nIn the master 33 year, the 6's care operates at the voltage of teaching: what you have lived becomes instruction for others. The 33's shadow is the exhausted savior — giving until the vessel that serves is empty. Cheiro notes the 33 carries the 24's fortune: help and magnetism are available to the one who does not burn out. The year's instruction is to teach from overflow, not depletion.\n\n---\nSingle-Digit Foundation (6):\n`,
 };
-/** The meaning for a Personal Year, including master years 11/22/33 which
- * carry their single-digit foundation (2/4/6) at heightened voltage. */
 function yearMeaning(py: number): { title: string; interpretation: string } {
   const direct = PY_MEANINGS[py];
   if (direct) return direct;
@@ -278,15 +241,8 @@ export function getPersonalYearAnalysis(
   targetYear: number = new Date().getFullYear(),
 ): PersonalYearResult {
   const y = targetYear;
-  const yearDigitSum = digitSumOnce(y); // e.g. 2024 -> 2+0+2+4 = 8 (single pass over the year's own digits — this isn't "pre-reducing a component," it's just how a 4-digit year is turned into a number to add in the first place)
-  // Raw compound Personal Year — birth day and birth month go in AS-IS
-  // (e.g. day 28 stays 28, not pre-reduced to 1+0=1), summed with the year's
-  // digit sum, with NO reduction applied to the total yet.
-  // e.g. 28 (day) + 2 (month) + 8 (year) = 38, not 1 + 2 + 8 = 11.
+  const yearDigitSum = digitSumOnce(y);
   const rawYear = birthDay + birthMonth + yearDigitSum;
-  // Final single-digit/master-number Personal Year, reduced only now — and
-  // reduced properly, stopping at 11/22/33 if the reduction passes through
-  // one rather than collapsing straight past it.
   const py = reduceNum(rawYear);
   const compound = lookupCompound(rawYear);
   const base = yearMeaning(py);
@@ -297,9 +253,6 @@ export function getPersonalYearAnalysis(
     ? compoundYearText(compound, rawYear) +
       `\n\n---\nSingle-Digit Interpretation (${py}):\n${base.interpretation}`
     : base.interpretation;
-  // ── Classic (pre-reduced-components) system — computed alongside, not
-  // instead of, the above. Both are shown to the person; neither overrides
-  // the other. ──
   const rawYearClassic = computeRawPersonalYearClassic(birthDay, birthMonth, y);
   const pyClassic = reduceNum(rawYearClassic);
   const compoundClassic = lookupCompound(rawYearClassic);
