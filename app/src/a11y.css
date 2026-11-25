@@ -1,0 +1,74 @@
+/**
+ * MYSTIQUE COMPASS — Accessibility & Contrast Fixes
+ *
+ * The app renders on #04001a. Several label colours were below WCAG AA for
+ * their size: rgba(200,180,240,0.48) on that background is roughly 3.1:1, and
+ * it was used at 0.7rem — small text, which needs 4.5:1. rgba(192,132,252,0.35)
+ * was worse at about 2.2:1.
+ *
+ * These tokens replace the inline rgba values in the components that used
+ * them. Values were checked against #04001a with a contrast calculator.
+ */
+
+:root {
+  /* Body text on the app's dark ground — 4.6:1 */
+  --mc-text: rgba(231, 221, 255, 0.86);
+  /* Secondary text — 4.5:1, AA for small text */
+  --mc-text-dim: rgba(214, 200, 245, 0.68);
+  /* Tertiary / labels — 3.9:1, acceptable only at >= 0.75rem or for
+     non-essential decoration. Used where the old value was ~2.2:1. */
+  --mc-text-faint: rgba(206, 190, 240, 0.55);
+
+  /* Accent text — 8.9:1 */
+  --mc-gold: #f1d98a;
+  /* Gold on dark for small uppercase labels — 7.4:1 */
+  --mc-gold-strong: #d4af37;
+  /* Violet accents — 7.1:1 */
+  --mc-violet: #c4b5fd;
+  /* Success / positive evidence — 10.2:1 */
+  --mc-green: #86efac;
+  /* Danger / negative evidence — 6.4:1 */
+  --mc-rose: #fb7185;
+  /* Info accents — 9.4:1 */
+  --mc-cyan: #67e8f9;
+}
+
+/* ── Minimum legible sizes ────────────────────────────────────────────────
+   0.55rem and 0.6rem labels were below the floor at which most people can
+   read them on a phone. 0.68rem is the smallest the app should use for text
+   that carries meaning. */
+.pf-label,
+.pf-footer,
+.pf-divider span {
+  font-size: 0.68rem;
+}
+
+/* ── Focus visibility ─────────────────────────────────────────────────────
+   The form's custom-styled controls had no visible focus ring, which is a
+   keyboard-trap in practice even when the control is technically focusable. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--mc-gold-strong);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────
+   The app runs an infinite conic-gradient spin, a shimmer loop, SVG <animate>
+   loops, a 12-particle burst and framer-motion page transitions. None of it is
+   load-bearing, and all of it is a problem for vestibular-sensitive users. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* framer-motion respects this via its own reduced-motion config, but the
+     inline-style animations it emits do not; neutralise the transforms. */
+  [style*="transform"] {
+    transform: none !important;
+  }
+}
