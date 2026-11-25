@@ -39,8 +39,9 @@ const idle = (fn: () => void) => {
 };
 
 /**
- * Gets the voice ready before Listen is tapped: starts an already
- * downloaded voice once the app has settled, then — whenever nothing is
+ * Gets the voice ready before Listen is tapped: prepares the audio output on
+ * the first touch, starts an already downloaded voice once the app has
+ * settled (not on low battery), then — whenever nothing is
  * being read and the screen has settled (after scrolling, a tap, a voice or
  * speed change) — prepares the first sentence each Listen button would read.
  */
@@ -64,12 +65,14 @@ function usePrepareVoice() {
     };
     const onScroll = () => schedule();
     const onTap = () => schedule(900);
+    const onFirstTouch = () => neuralVoice.primeAudio();
     const onShow = () => {
       if (document.visibilityState !== "visible") return;
       void neuralVoice.warmUp();
       schedule();
     };
     const warm = setTimeout(() => idle(() => void neuralVoice.warmUp()), 1200);
+    schedule(1500); // the voice may already be ready (warmed while hidden)
     let wasReady = neuralVoice.getState().status === "ready";
     const offVoice = neuralVoice.subscribe((s) => {
       const ready = s.status === "ready";
@@ -83,6 +86,7 @@ function usePrepareVoice() {
     window.addEventListener("scroll", onScroll, { passive: true, capture: true });
     window.addEventListener("resize", onScroll, { passive: true });
     document.addEventListener("click", onTap, true);
+    document.addEventListener("pointerdown", onFirstTouch, { capture: true, once: true });
     document.addEventListener("visibilitychange", onShow);
     return () => {
       clearTimeout(warm);
@@ -93,6 +97,7 @@ function usePrepareVoice() {
       window.removeEventListener("scroll", onScroll, { capture: true });
       window.removeEventListener("resize", onScroll);
       document.removeEventListener("click", onTap, true);
+      document.removeEventListener("pointerdown", onFirstTouch, true);
       document.removeEventListener("visibilitychange", onShow);
     };
   }, []);

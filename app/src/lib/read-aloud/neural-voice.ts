@@ -17,7 +17,9 @@
  * - warmUp(): once the app has settled, a voice that is already downloaded
  *   is started in the background (no download is ever started unasked);
  * - prefetch(): while nothing is being read, the opening of what each
- *   Listen button would read is made in advance and kept ready;
+ *   Listen button would read is made in advance and kept ready (on one
+ *   worker at a time; dropped when it scrolls out of view);
+ * - primeAudio(): the audio output is created on the first touch;
  * - the opening of a reading is cut at its first comma when that comes
  *   early, so even something not prepared starts sooner.
  */
@@ -67,6 +69,8 @@ interface Job {
   text: string;
   voice: string;
   speed: number;
+  /** Made in advance (prefetch), not for the reading in progress. */
+  early?: boolean;
   resolve: (c: Clip) => void;
   reject: (e: Error) => void;
 }
@@ -133,6 +137,18 @@ function dropOldVersions() {
   }
 }
 
+/** Battery under 20% and not charging (where the browser tells). */
+async function lowBattery(): Promise<boolean> {
+  try {
+    const n = nav() as (Navigator & { getBattery?: () => Promise<{ level: number; charging: boolean }> }) | null;
+    if (!n?.getBattery) return false;
+    const b = await n.getBattery();
+    return !b.charging && b.level < 0.2;
+  } catch {
+    return false;
+  }
+}
+
 /** Keep the last few voices used offline; delete older downloads. */
 async function pruneVoices(voice: string) {
   try {
@@ -171,6 +187,13 @@ class NeuralVoice {
     const capable = NeuralVoice.capable();
     if (capable) {
       dropOldVersions();
+      // Opened in the background (a notification, a background tab): warm
+      // up when the page is first shown instead of waiting for Listen.
+      if (typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") void this.warmUp();
+        });
+      }
       // A different voice picked while one is loaded: switch to it.
       voiceSettings.subscribe(() => {
         const voice = currentVoice();
@@ -337,13 +360,19 @@ class NeuralVoice {
   }
 
   /** Hands the most urgent queued parts to free workers. */
+  private earlyRunning = 0;
+
   private pump() {
     for (const slot of this.slots) {
       if (slot.busy || !slot.voice) continue;
-      const at = this.queue.findIndex((j) => j.voice === slot.voice);
+      // Advance work uses one worker at a time, so with two workers one is
+      // always free to start a reading the moment Listen is tapped.
+      const earlyOk = this.earlyRunning === 0;
+      const at = this.queue.findIndex((j) => j.voice === slot.voice && (!j.early || earlyOk));
       if (at < 0) return;
       const [job] = this.queue.splice(at, 1);
       slot.busy = true;
+      if (job.early) this.earlyRunning++;
       this.rpc(slot, job)
         .then(job.resolve, (err) => {
           this.cache.delete(job.key);
@@ -351,6 +380,7 @@ class NeuralVoice {
         })
         .finally(() => {
           slot.busy = false;
+          if (job.early) this.earlyRunning--;
           this.pump();
         });
     }
@@ -363,16 +393,20 @@ class NeuralVoice {
 
   /**
    * The same, for the sentence a reading starts with: a long first part is
-   * cut at its first clause break ("Similar to the PY4," | "this is…"), so
-   * the voice can start after making only a few words.
+   * cut at its first clause break ("Similar to the PY4," | "this is…"), or,
+   * when none comes early, at a word boundary after ~45 characters, so the
+   * voice can start after making only a few words.
    */
   openingParts(text: string): string[] {
     const parts = this.partsOf(text);
     const first = parts[0] ?? "";
     if (first.length <= OPENING_MAX) return parts;
     const m = /^([\s\S]{20,}?[,;:—–])\s+([\s\S]+)$/.exec(first);
-    if (!m || m[1].length > OPENING_MAX) return parts;
-    return [m[1], m[2], ...parts.slice(1)];
+    if (m && m[1].length <= OPENING_MAX) return [m[1], m[2], ...parts.slice(1)];
+    // No early clause break: cut at a word boundary between 45 and 80 characters.
+    const cut = first.indexOf(" ", 45);
+    if (cut > 0 && cut <= OPENING_MAX) return [first.slice(0, cut), first.slice(cut + 1), ...parts.slice(1)];
+    return parts;
   }
 
   private key(voice: string, speed: number, text: string): string {
@@ -386,6 +420,7 @@ class NeuralVoice {
   async warmUp(): Promise<void> {
     if (this.state.status !== "idle") return;
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    if (await lowBattery()) return; // it starts on the first Listen instead
     const voice = currentVoice();
     try {
       if (typeof caches === "undefined") return;
@@ -394,6 +429,9 @@ class NeuralVoice {
     } catch {
       return;
     }
+    // Audio output too, so the Listen tap only has to resume it (parked
+    // suspended, so it doesn't interrupt other apps' sound).
+    this.primeAudio();
     if (this.state.status !== "idle") return;
     void this.start(voice).catch(() => {});
   }
@@ -405,15 +443,24 @@ class NeuralVoice {
   prefetch(texts: string[], speed: number) {
     if (this.state.status !== "ready") return;
     const voice = this.state.voice;
+    const keys = new Set<string>();
     for (const text of texts.slice(0, PREFETCH_LIMIT)) {
       const part = this.openingParts(text)[0];
       if (!part) continue;
       const key = this.key(voice, speed, part);
+      keys.add(key);
       if (this.cache.has(key)) continue;
-      const p = new Promise<Clip>((resolve, reject) => this.queue.push({ key, text: part, voice, speed, resolve, reject }));
+      const p = new Promise<Clip>((resolve, reject) => this.queue.push({ key, text: part, voice, speed, early: true, resolve, reject }));
       p.catch(() => {});
       this.cache.set(key, p);
     }
+    // Advance work for what is no longer on screen is dropped (not started).
+    this.queue = this.queue.filter((j) => {
+      if (!j.early || keys.has(j.key)) return true;
+      this.cache.delete(j.key);
+      j.reject(new Error("skipped"));
+      return false;
+    });
     while (this.cache.size > CACHE_LIMIT) this.cache.delete(this.cache.keys().next().value as string);
     this.pump();
   }
@@ -456,6 +503,7 @@ class NeuralVoice {
       j.reject(new Error("skipped"));
       return false;
     });
+    this.queue.forEach((j) => (j.early = false)); // needed now
     this.queue.sort((a, b) => order.get(a.key)! - order.get(b.key)!);
     const out = keys.slice(0, firstParts.length).map((k) => this.cache.get(k)!);
     while (this.cache.size > CACHE_LIMIT) this.cache.delete(this.cache.keys().next().value as string);
@@ -464,6 +512,23 @@ class NeuralVoice {
   }
 
   // ── Playback ──────────────────────────────────────────────────────────────
+
+  /**
+   * Call on the first touch anywhere in the app: creates the audio output
+   * ahead of time, then parks it (suspended, so it doesn't interrupt other
+   * apps' music), so Listen only has to resume it.
+   */
+  primeAudio() {
+    if (this.ctx) return;
+    const Ctor = audioCtor();
+    if (!Ctor) return;
+    try {
+      this.ctx = new Ctor();
+      if (this.ctx.state === "running") void this.ctx.suspend?.().catch(() => {});
+    } catch {
+      this.ctx = null;
+    }
+  }
 
   /**
    * Call inside the user's tap: browsers (iOS Safari especially) only let
@@ -476,7 +541,7 @@ class NeuralVoice {
       const n = nav();
       // iOS: play even when the ring/silent switch is on.
       if (n?.audioSession) n.audioSession.type = "playback";
-      if (!this.ctx) this.ctx = new Ctor();
+      if (!this.ctx || this.ctx.state === "closed") this.ctx = new Ctor();
       if (this.ctx.state !== "running") void this.ctx.resume().catch(() => {});
       const silent = this.ctx.createBuffer(1, 1, 22050);
       const s = this.ctx.createBufferSource();
