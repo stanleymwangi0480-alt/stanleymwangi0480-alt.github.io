@@ -7,6 +7,25 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { History } from "lucide-react";
 import type {
@@ -16,6 +35,7 @@ import type {
 } from "./types";
 import { ProfileForm } from "./profile-form";
 import { TodayCard } from "./today-card";
+import { ErrorBoundary } from "@/components/error-boundary";
 // The results screen and the calculation engines are big (megabytes of
 // interpretation text). Load them only when someone actually asks for a
 // reading, so the first screen opens fast on mobile data.
@@ -66,12 +86,19 @@ export function ProfileGenerator() {
     gender: "",
   });
   const [insight, setInsight] = React.useState<AstroInsightOutput | null>(null);
-  const [numerology, setNumerology] = React.useState<NumerologyData | null>(
-    null,
-  );
+  const [numerology, setNumerology] = React.useState<NumerologyData | null>(null);
   const [history, setHistory] = React.useState<StoredSoul[]>([]);
   const importInputRef = React.useRef<HTMLInputElement>(null);
   const [isHistoryOpen, setIsHistoryOpen] = React.useState(false);
+
+  // ── Confirmation / rename dialogs ────────────────────────────────────
+  // Native confirm() and prompt() block the main thread, are disabled in some
+  // installed-PWA contexts, and cannot be styled or read reliably by screen
+  // readers. The app already ships Radix dialogs; use them.
+  const [pendingDelete, setPendingDelete] = React.useState<StoredSoul | null>(null);
+  const [renaming, setRenaming] = React.useState<StoredSoul | null>(null);
+  const [renameValue, setRenameValue] = React.useState("");
+
   React.useEffect(() => {
     const initHistory = async () => {
       try {
@@ -213,7 +240,6 @@ export function ProfileGenerator() {
     } catch {}
   };
   const deleteSoulRecord = async (record: StoredSoul) => {
-    if (!confirm(`Delete ${record.name} from the Archivum?`)) return;
     try {
       const db = await openDB();
       const tx = db.transaction(STORE_NAME, "readwrite");
@@ -232,10 +258,15 @@ export function ProfileGenerator() {
       tx.oncomplete = refreshHistory;
     } catch {}
   };
-  const renameSoulRecord = async (record: StoredSoul) => {
-    const next = prompt("Rename this soul:", record.name)?.trim();
-    if (!next || next === record.name) return;
-    await updateSoulRecord({ ...record, name: next });
+  const commitRename = async () => {
+    if (!renaming) return;
+    const next = renameValue.trim();
+    if (!next || next === renaming.name) {
+      setRenaming(null);
+      return;
+    }
+    await updateSoulRecord({ ...renaming, name: next });
+    setRenaming(null);
   };
   const exportArchivum = () => {
     const payload = {
@@ -387,138 +418,209 @@ export function ProfileGenerator() {
     processRequest(item);
   };
   return (
-    <Sheet open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
-      <AnimatePresence mode="wait">
-        {insight && numerology ? (
-          <motion.div key="results">
-            <React.Suspense
-              fallback={
-                <div className="py-24 text-center font-cinzel text-xs uppercase tracking-widest text-slate-400">
-                  Unfolding your reading…
-                </div>
-              }
-            >
-              <ResultsDisplay
-                insight={insight}
-                numerology={numerology}
-                history={history}
-                onReset={handleReset}
-                onHistoryOpen={() => setIsHistoryOpen(true)}
-              />
-            </React.Suspense>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="form"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <input
-              ref={importInputRef}
-              type="file"
-              accept="application/json,.json"
-              style={{ display: "none" }}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) void importArchivumFile(file);
-                e.currentTarget.value = "";
-              }}
-            />
-            <ProfileForm
-              formData={formData}
-              isPending={isPending}
-              onSubmit={handleSubmit}
-              onHistoryOpen={() => setIsHistoryOpen(true)}
-              onSelectChange={(v) =>
-                setFormData((prev) => ({ ...prev, gender: v }))
-              }
-              onFieldChange={(e) =>
-                setFormData((prev) => ({
-                  ...prev,
-                  [e.target.name]: e.target.value,
-                }))
-              }
-              onFamousPersonSelect={handleFamousPersonSelect}
-            />
-            <TodayCard history={history} onOpen={handleHistoryClick} />
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <SheetContent
-        className="w-[90%] sm:max-w-md"
-        style={{
-          background: "rgba(9,16,35,0.98)",
-          borderLeft: "1px solid rgba(200,168,75,0.22)",
-        }}
-      >
-        <SheetHeader className="pb-6 border-b border-white/10">
-          <SheetTitle className="font-decorative text-xl text-primary">
-            Archivum of Souls
-          </SheetTitle>
-          <p className="text-[11px] font-cinzel uppercase tracking-widest text-slate-500">
-            indefinite records • local storage
-          </p>
-          <ImportExportButtons
-            onImport={() => importInputRef.current?.click()}
-            onExport={exportArchivum}
-          />
-        </SheetHeader>
-        <ScrollArea className="h-[calc(100vh-8rem)] mt-4">
-          <div className="space-y-3 py-4 pr-4">
-            {history.length > 0 ? (
-              history.map((item, index) => (
-                <button
-                  key={`${(item as any).id || index}`}
-                  className="w-full text-left p-4 rounded-xl transition-all duration-300 group"
-                  style={{
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                  }}
-                  onClick={() => handleHistoryClick(item)}
-                >
-                  <div className="flex flex-col gap-1">
-                    <span className="font-body text-base font-bold text-slate-100 group-hover:text-primary transition-colors">
-                      {(item as any).pinned ? "★ " : ""}
-                      {item.name}
-                    </span>
-                    <div className="flex items-center gap-2 text-[11px] font-cinzel uppercase tracking-wider text-slate-500">
-                      <span>
-                        Born {item.day}/{item.month}/{item.year}
-                      </span>
-                      <span className="opacity-30">•</span>
-                      <span
-                        className={
-                          item.gender === "male"
-                            ? "text-blue-400/70"
-                            : "text-pink-400/70"
-                        }
-                      >
-                        {item.gender}
-                      </span>
-                    </div>
-                    <ArchivumActions
-                      item={item as StoredSoul}
-                      onLoad={handleHistoryClick}
-                      onPin={pinSoulRecord}
-                      onRename={renameSoulRecord}
-                      onDelete={deleteSoulRecord}
-                    />
+    <>
+      <Sheet open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
+        <AnimatePresence mode="wait">
+          {insight && numerology ? (
+            <motion.div key="results">
+              <React.Suspense
+                fallback={
+                  <div className="py-24 text-center font-cinzel text-xs uppercase tracking-widest text-slate-400">
+                    Unfolding your reading…
                   </div>
-                </button>
-              ))
-            ) : (
-              <div className="flex flex-col items-center justify-center py-20 opacity-20 text-center space-y-4">
-                <History className="h-12 w-12 stroke-[1]" />
-                <p className="font-cinzel text-xs uppercase tracking-widest">
-                  The Archivum is empty
-                </p>
-              </div>
-            )}
-          </div>
-        </ScrollArea>
-      </SheetContent>
-    </Sheet>
+                }
+              >
+                {/* React 19 unmounts the whole root on an uncaught throw. This
+                    boundary keeps a broken tab from taking the reading with it. */}
+                <ErrorBoundary label="This section" onReset={handleReset}>
+                  <ResultsDisplay
+                    insight={insight}
+                    numerology={numerology}
+                    history={history}
+                    onReset={handleReset}
+                    onHistoryOpen={() => setIsHistoryOpen(true)}
+                  />
+                </ErrorBoundary>
+              </React.Suspense>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="form"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void importArchivumFile(file);
+                  e.currentTarget.value = "";
+                }}
+              />
+              <ProfileForm
+                formData={formData}
+                isPending={isPending}
+                onSubmit={handleSubmit}
+                onHistoryOpen={() => setIsHistoryOpen(true)}
+                onSelectChange={(v) =>
+                  setFormData((prev) => ({ ...prev, gender: v }))
+                }
+                onFieldChange={(e) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    [e.target.name]: e.target.value,
+                  }))
+                }
+                onFamousPersonSelect={handleFamousPersonSelect}
+              />
+              <TodayCard history={history} onOpen={handleHistoryClick} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <SheetContent
+          className="w-[90%] sm:max-w-md"
+          style={{
+            background: "rgba(9,16,35,0.98)",
+            borderLeft: "1px solid rgba(200,168,75,0.22)",
+          }}
+        >
+          <SheetHeader className="pb-6 border-b border-white/10">
+            <SheetTitle className="font-decorative text-xl text-primary">
+              Archivum of Souls
+            </SheetTitle>
+            <p className="text-[11px] font-cinzel uppercase tracking-widest text-slate-500">
+              indefinite records • local storage
+            </p>
+            <ImportExportButtons
+              onImport={() => importInputRef.current?.click()}
+              onExport={exportArchivum}
+            />
+          </SheetHeader>
+          <ScrollArea className="h-[calc(100vh-8rem)] mt-4">
+            <div className="space-y-3 py-4 pr-4">
+              {history.length > 0 ? (
+                history.map((item, index) => (
+                  <button
+                    key={`${(item as any).id || index}`}
+                    className="w-full text-left p-4 rounded-xl transition-all duration-300 group"
+                    style={{
+                      background: "rgba(255,255,255,0.03)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                    }}
+                    onClick={() => handleHistoryClick(item)}
+                  >
+                    <div className="flex flex-col gap-1">
+                      <span className="font-body text-base font-bold text-slate-100 group-hover:text-primary transition-colors">
+                        {(item as any).pinned ? "★ " : ""}
+                        {item.name}
+                      </span>
+                      <div className="flex items-center gap-2 text-[11px] font-cinzel uppercase tracking-wider text-slate-500">
+                        <span>
+                          Born {item.day}/{item.month}/{item.year}
+                        </span>
+                        <span className="opacity-30">•</span>
+                        <span
+                          className={
+                            item.gender === "male"
+                              ? "text-blue-400/70"
+                              : "text-pink-400/70"
+                          }
+                        >
+                          {item.gender}
+                        </span>
+                      </div>
+                      <ArchivumActions
+                        item={item as StoredSoul}
+                        onLoad={handleHistoryClick}
+                        onPin={pinSoulRecord}
+                        onRename={(r) => { setRenaming(r); setRenameValue(r.name); }}
+                        onDelete={(r) => setPendingDelete(r)}
+                      />
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 opacity-20 text-center space-y-4">
+                  <History className="h-12 w-12 stroke-[1]" />
+                  <p className="font-cinzel text-xs uppercase tracking-widest">
+                    The Archivum is empty
+                  </p>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Delete confirmation ─────────────────────────────────────────── */}
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {pendingDelete?.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the saved profile from this device. The reading
+              itself is not stored anywhere else, so this cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+n              onClick={() => {
+                if (pendingDelete) void deleteSoulRecord(pendingDelete);
+                setPendingDelete(null);
+              }}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Rename ──────────────────────────────────────────────────────── */}
+      <Dialog
+        open={!!renaming}
+        onOpenChange={(open) => !open && setRenaming(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename this soul</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void commitRename();
+            }}
+            aria-label="New name"
+            autoFocus
+          />
+          <DialogFooter>
+            <button
+              type="button"
+              className="text-sm text-slate-400 hover:text-slate-200"
+              onClick={() => setRenaming(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="text-sm font-semibold text-primary"
+              onClick={() => void commitRename()}
+            >
+              Save
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
