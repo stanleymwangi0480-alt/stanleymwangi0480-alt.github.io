@@ -1,4 +1,3 @@
-
 /**
  * MYSTIQUE COMPASS — Premium Profile Form
  */
@@ -17,9 +16,8 @@ import {
 } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { FamousPerson } from '@/lib/famous-birthdays';
-import InstallButton from '../InstallButton';
 import { useToast } from '@/hooks/use-toast';
-import { fetchBiographyResilient } from '@/lib/wikipedia-client';
+import { fetchBiographyResilient, hasCompleteBirthDate } from '@/lib/wikipedia-client';
 
 interface ProfileFormProps {
   formData: { name: string; day: number; month: number; year: number; gender: string };
@@ -121,8 +119,25 @@ export function ProfileForm({
       // falls back to fetching straight from Wikipedia in the browser. Only
       // fails outright if the device itself has no internet connection.
       const data = await fetchBiographyResilient(searchQuery);
-      if (data.found && data.birthYear && data.birthMonth && data.birthDay) {
-        handleSelectPerson({ name: data.title!, day: data.birthDay, month: data.birthMonth, year: data.birthYear, gender: data.gender || 'male', tags: ['Wikipedia', data.description].filter(Boolean) as string[] });
+      // THE FIX: gate on a real, complete date. Previously this test was
+      // `data.found && data.birthYear && data.birthMonth && data.birthDay`,
+      // which always passed because the client was filling missing month/day
+      // with 1 — so a year-only infobox generated a chart for 1 January.
+      if (hasCompleteBirthDate(data)) {
+        handleSelectPerson({
+          name: data.title!,
+          day: data.birthDay!,
+          month: data.birthMonth!,
+          year: data.birthYear!,
+          gender: data.gender || 'male',
+          tags: ['Wikipedia', data.description].filter(Boolean) as string[],
+        });
+      } else if (data.found && data.birthYear) {
+        // Source gave a year but no day/month. Say so instead of inventing one.
+        toast({
+          title: 'Date incomplete',
+          description: `Wikipedia gives ${data.title || 'this person'}'s birth year as ${data.birthYear}, but not the day or month. Enter them manually so the chart is real.`,
+        });
       } else if (data.error) {
         toast({ variant: 'destructive', title: 'Search Error', description: data.error });
       } else {
@@ -138,7 +153,7 @@ export function ProfileForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     // Guard against impossible calendar dates (e.g. Feb 30, Apr 31) that the
-    // plain number inputs' min/max attributes alone can't catch, since day
+    // plain number inputs' min-max attributes alone can't catch, since day
     // and month are validated independently of each other.
     const day = Number((formData as any).day);
     const month = Number((formData as any).month);
@@ -194,11 +209,20 @@ export function ProfileForm({
         .pf-card-title { font-family: 'Cinzel Decorative', 'Cinzel', serif; font-size: 1.35rem; font-weight: 700; background: linear-gradient(135deg, #fdf1b8, #e8c56d, #d4af37); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing: 0.04em; }
         .pf-tagline { color: rgba(192, 132, 252, 0.6); font-style: italic; font-size: 0.72rem; margin-top: -0.5rem; font-family: var(--font-body, serif); }
         .pf-footer { text-align: center; padding: 1rem; color: rgba(192,132,252,0.35); font-size: 0.62rem; font-style: italic; line-height: 1.7; font-family: var(--font-body, serif); white-space: pre-line; }
+
+        /* ── Reduced motion ──────────────────────────────────────────────
+           The form runs an infinite conic-gradient spin, a shimmer loop, SVG
+           <animate> loops and a 12-particle burst. For vestibular-sensitive
+           users and for battery, none of it is load-bearing. */
+        @media (prefers-reduced-motion: reduce) {
+          .pf-card-wrap, .pf-btn-shimmer, .pf-particle { animation: none !important; }
+          .pf-constellation { opacity: 0.35; }
+          .pf-constellation circle { animation: none !important; }
+        }
       `}</style>
 
       <div className="pf-root">
         <header className="text-center pt-8 pb-2">
-          <div className="flex justify-center mb-4"><InstallButton /></div>
           <div className="flex justify-center items-center my-4">
             <svg viewBox="0 0 400 160" className="w-full max-w-sm h-auto">
               <defs>
@@ -223,15 +247,27 @@ export function ProfileForm({
             <div className="pf-card">
               <motion.div className="flex items-center justify-between mb-6" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
                 <div><div className="pf-card-title">Generate Profile</div><p className="text-purple-300/40 text-[0.7rem] font-cinzel tracking-widest mt-1 uppercase">✦ Cosmic Profile Generator ✦</p></div>
-                <Button type="button" variant="ghost" size="icon" onClick={onHistoryOpen} className="text-amber-300/50 hover:text-amber-300 hover:bg-purple-900/30 rounded-full border border-amber-300/10 hover:border-amber-300/30 transition-all"><History className="h-4 w-4" /></Button>
+                <Button type="button" variant="ghost" size="icon" onClick={onHistoryOpen} aria-label="Open saved profiles" className="text-amber-300/50 hover:text-amber-300 hover:bg-purple-900/30 rounded-full border border-amber-300/10 hover:border-amber-300/30 transition-all"><History className="h-4 w-4" /></Button>
               </motion.div>
               <form onSubmit={handleSubmit} className="space-y-5">
                 <motion.div custom={0} variants={fieldVariants} initial="hidden" animate="visible">
                   <Popover open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+                    {/* asChild on a <div> is not keyboard-focusable, which is why
+                        the old onBlur hack existed. A real <button> is focusable,
+                        announces itself, and opens on Enter/Space for free. */}
                     <PopoverTrigger asChild>
-                      <div className="space-y-1"><label className="pf-label">Search Database or Wikipedia</label>
-                        <div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-purple-400/50" /><Input placeholder="e.g., Albert Einstein, Tesla, Napoleon…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onBlur={() => setTimeout(() => setIsSearchOpen(false), 200)} onFocus={() => { if (searchQuery.length > 1) setIsSearchOpen(true); }} className="pl-10" autoComplete="off" /></div>
-                      </div>
+                      <button
+                        type="button"
+                        className="space-y-1 w-full"
+                        style={{ textAlign: 'left', background: 'transparent', border: 'none', padding: 0 }}
+                        aria-label="Search the database or Wikipedia"
+                      >
+                        <span className="pf-label">Search Database or Wikipedia</span>
+                        <span className="relative block">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-purple-400/50" />
+                          <Input placeholder="e.g., Albert Einstein, Tesla, Napoleon…" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onFocus={() => { if (searchQuery.length > 1) setIsSearchOpen(true); }} className="pl-10" autoComplete="off" />
+                        </span>
+                      </button>
                     </PopoverTrigger>
                     <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 bg-[#0f0523] border border-purple-500/20" onOpenAutoFocus={e => e.preventDefault()}><div className="max-h-80 overflow-y-auto">{searchResults.length > 0 && (<div className="border-b border-white/5 pb-1"><div className="px-3 py-2 text-[11px] uppercase tracking-wider text-amber-300/40 font-bold bg-white/3 font-cinzel">Local Database</div>{searchResults.map((person, i) => (<div key={`${person.name}-${i}`} className="pf-search-result" onMouseDown={e => { e.preventDefault(); handleSelectPerson(person); }}>{person.name} <span className="text-[11px] text-purple-400/50">({person.tags.join(', ')})</span></div>))}</div>)}<div className="pf-wiki-row" onMouseDown={e => { e.preventDefault(); handleWikiSearch(); }}>{isWikiLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Globe className="h-4 w-4" />}{isWikiLoading ? 'Searching Wikipedia…' : `Search Wikipedia for "${searchQuery || '…'}"`}</div></div></PopoverContent>
                   </Popover>
@@ -239,7 +275,7 @@ export function ProfileForm({
                 <div className="pf-divider"><span>OR ENTER MANUALLY</span></div>
                 <motion.div custom={1} variants={fieldVariants} initial="hidden" animate="visible"><label htmlFor="name" className="pf-label">Full Name</label><Input id="name" name="name" placeholder="e.g., Jane Doe" value={formData.name} onChange={onFieldChange} required /></motion.div>
                 <motion.div custom={2} variants={fieldVariants} initial="hidden" animate="visible"><div className="grid grid-cols-3 gap-3">{[ { id: 'day', label: 'Day', placeholder: 'DD', min: 1, max: 31 }, { id: 'month', label: 'Month', placeholder: 'MM', min: 1, max: 12 }, { id: 'year', label: 'Year', placeholder: 'YYYY', min: 1, max: new Date().getFullYear() },].map(f => (<div key={f.id}><label htmlFor={f.id} className="pf-label">{f.label}</label><Input id={f.id} name={f.id} type="number" placeholder={f.placeholder} value={(formData as any)[f.id] || ''} onChange={onFieldChange} required min={f.min} max={f.max} /></div>))}</div></motion.div>
-                <motion.div custom={3} variants={fieldVariants} initial="hidden" animate="visible"><label htmlFor="gender" className="pf-label">Gender</label><Select onValueChange={onSelectChange} value={formData.gender}><SelectTrigger className="w-full"><SelectValue placeholder="Select gender" /></SelectTrigger><SelectContent className="bg-[#0f0523] border-purple-500/20"><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem></SelectContent></Select></motion.div>
+                <motion.div custom={3} variants={fieldVariants} initial="hidden" animate="visible"><label htmlFor="gender" className="pf-label">Gender</label><Select onValueChange={onSelectChange} value={formData.gender}><SelectTrigger className="w-full" aria-label="Gender"><SelectValue placeholder="Select gender" /></SelectTrigger><SelectContent className="bg-[#0f0523] border-purple-500/20"><SelectItem value="male">Male</SelectItem><SelectItem value="female">Female</SelectItem></SelectContent></Select></motion.div>
                 <motion.div custom={4} variants={fieldVariants} initial="hidden" animate="visible" className="relative pt-2"><ParticleRing active={burst} /><button type="submit" className="pf-btn"><div className="pf-btn-shimmer" /><span className="relative z-10 flex items-center justify-center gap-2">{isPending ? (<><Loader2 className="h-4 w-4 animate-spin" /> Reading the cosmos…</>) : (<><Sparkles className="h-4 w-4" /> Reveal My Cosmic Profile</>)}</span></button></motion.div>
               </form>
               <div className="relative mt-4 h-8"><ConstellationSVG /></div>
