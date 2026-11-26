@@ -17,6 +17,7 @@ import type {
 import { AstroDisplay } from "./astro-display";
 import { NumerologyDisplay } from "./numerology-display";
 import { PrecedentLedger } from "@/components/personal-year/precedent-ledger";
+import { NumberCodexPanel, AnimalCodexPanel } from "@/components/codex/codex-panel";
 import { CosmicFateMap } from "./cosmic-fate-map";
 import {
   TemporalPredictionDisplay,
@@ -55,6 +56,7 @@ import {
   X,
   CalendarDays,
   Bell,
+  ScrollText,
 } from "lucide-react";
 import { AccordionContentWithPlayer } from "./accordion-content-with-player";
 import InstallButton from "../InstallButton";
@@ -681,7 +683,7 @@ function CosmicAlertsArchive({
         }}
       />
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen((o) => !o)} aria-expanded={open}
         style={{
           width: "100%",
           display: "flex",
@@ -1226,6 +1228,7 @@ function NewAstroLayer({
       <button
         onClick={onToggle}
         aria-expanded={isOpen}
+        data-study-open={["na.profile", "na.love", "na.home", "na.social", "na.career"][layerNum - 1]}
         style={{
           width: "100%",
           background: "transparent",
@@ -1708,7 +1711,7 @@ function CollapsibleSection({
         }}
       />
       <button
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen((o) => !o)} aria-expanded={open}
         style={{
           width: "100%",
           display: "flex",
@@ -2082,6 +2085,15 @@ export function ResultsDisplay({
                       <SynthesisAstroMoreSections synthesis={synthesis} />
                     </>
                   )}
+                  <div data-study-anchor="astro.codex">
+                    <CollapsibleSection
+                      title="The Animal Codex"
+                      subtitle={`Your ${insight.sign === "Rabbit" ? "Cat" : insight.sign} in layers — trines, enemies, child-rearing, geopolitics & famous figures`}
+                      icon={<ScrollText size={16} />}
+                    >
+                      <AnimalCodexPanel sign={insight.sign} />
+                    </CollapsibleSection>
+                  </div>
                   <div data-study-anchor="astro.profiler">
                     <CollapsibleSection
                       title="Cosmic Profile Synthesis"
@@ -2113,6 +2125,15 @@ export function ResultsDisplay({
                       numerology={numerology}
                     />
                   )}
+                  <div data-study-anchor="num.codex">
+                    <CollapsibleSection
+                      title="The Number Codex"
+                      subtitle="Your Life Path and birth-day numbers in layers — letterology, enemies & friends, birthdays, cycles & famous figures"
+                      icon={<BookOpen size={16} />}
+                    >
+                      <NumberCodexPanel birthDay={numerology.birthDay} birthMonth={numerology.birthMonth} birthYear={numerology.birthYear} />
+                    </CollapsibleSection>
+                  </div>
                   {synthesis?.personalYearAnalysis?.dualEssence?.precedentLedger && (
                     <div data-study-anchor="num.precedent">
                     <CollapsibleSection
